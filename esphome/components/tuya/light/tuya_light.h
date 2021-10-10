@@ -42,6 +42,8 @@ class TuyaLight : public Component, public light::LightOutput {
   }
   void set_color_interlock(bool color_interlock) { color_interlock_ = color_interlock; }
 
+  void maybe_set_temp_brightness();
+
   light::LightTraits get_traits() override;
   void setup_state(light::LightState *state) override;
   void write_state(light::LightState *state) override;
@@ -60,6 +62,8 @@ class TuyaLight : public Component, public light::LightOutput {
   uint32_t min_value_ = 0;
   uint32_t max_value_ = 255;
   uint32_t color_temperature_max_value_ = 255;
+  uint32_t brightness_cached_ = UINT32_MAX;
+  uint32_t colour_temperature_cached_ = UINT32_MAX;
   float cold_white_temperature_;
   float warm_white_temperature_;
   bool color_temperature_invert_{false};
