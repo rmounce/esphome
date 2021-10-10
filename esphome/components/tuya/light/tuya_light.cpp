@@ -6,6 +6,37 @@ namespace esphome {
 namespace tuya {
 
 static const char *const TAG = "tuya.light";
+static const float mid_bright = 0.25f;
+
+void TuyaLight::maybe_set_temp_brightness() {
+  if (this->colour_temperature_cached_ != UINT32_MAX && this->brightness_cached_ != UINT32_MAX) {
+    if (this->color_temperature_invert_) {
+      this->colour_temperature_cached_ = this->color_temperature_max_value_ - this->colour_temperature_cached_;
+    }
+
+    float color_temperature = float(this->colour_temperature_cached_) / this->color_temperature_max_value_;
+    float brightness = float(this->brightness_cached_) / this->max_value_;
+
+    if (colour_temperature_cached_ != this->color_temperature_max_value_ / 2) {
+      if (this->brightness_cached_ <= this->min_value_) {
+        brightness = mid_bright * 2.0f * std::abs(color_temperature - 0.5f);
+        color_temperature = std::round(color_temperature);
+      } else {
+        float mid_bright_scaled = (mid_bright * 2.0f * std::abs(color_temperature - 0.5f));
+        brightness = mid_bright_scaled + ((1.0f - mid_bright_scaled) * brightness);
+      }
+    }
+
+    auto call = this->state_->make_call();
+    call.set_color_temperature(this->cold_white_temperature_ +
+                               (this->warm_white_temperature_ - this->cold_white_temperature_) * color_temperature);
+    call.set_brightness(brightness);
+    call.perform();
+
+    this->colour_temperature_cached_ = UINT32_MAX;
+    this->brightness_cached_ = UINT32_MAX;
+  }
+}
 
 void TuyaLight::setup() {
   if (this->color_temperature_id_.has_value()) {
@@ -15,15 +46,8 @@ void TuyaLight::setup() {
         return;
       }
 
-      auto datapoint_value = datapoint.value_uint;
-      if (this->color_temperature_invert_) {
-        datapoint_value = this->color_temperature_max_value_ - datapoint_value;
-      }
-      auto call = this->state_->make_call();
-      call.set_color_temperature(this->cold_white_temperature_ +
-                                 (this->warm_white_temperature_ - this->cold_white_temperature_) *
-                                     (float(datapoint_value) / this->color_temperature_max_value_));
-      call.perform();
+      this->colour_temperature_cached_ = datapoint.value_uint;
+      maybe_set_temp_brightness();
     });
   }
   if (this->dimmer_id_.has_value()) {
@@ -33,9 +57,8 @@ void TuyaLight::setup() {
         return;
       }
 
-      auto call = this->state_->make_call();
-      call.set_brightness(float(datapoint.value_uint) / this->max_value_);
-      call.perform();
+      this->brightness_cached_ = datapoint.value_uint;
+      maybe_set_temp_brightness();
     });
   }
   if (switch_id_.has_value()) {
@@ -161,6 +184,18 @@ void TuyaLight::write_state(light::LightState *state) {
     state->current_values_as_brightness(&brightness);
   }
 
+  float temp_diff = color_temperature - 0.5f;
+  float mid_bright_scaled = (mid_bright * 2.0f * std::abs(temp_diff));
+
+  if (brightness <= mid_bright_scaled) {
+    color_temperature = 0.5f + (temp_diff * (brightness / mid_bright_scaled));
+    brightness = 0.0001f;
+  } else {
+    brightness = (brightness - mid_bright_scaled) / (1.0f - mid_bright_scaled);
+  }
+  this->colour_temperature_cached_ = UINT32_MAX;
+  this->brightness_cached_ = UINT32_MAX;
+
   if (!state->current_values.is_on() && this->switch_id_.has_value()) {
     this->parent_->set_boolean_datapoint_value(*this->switch_id_, false);
     return;
@@ -172,6 +207,7 @@ void TuyaLight::write_state(light::LightState *state) {
       if (this->color_temperature_invert_) {
         color_temp_int = this->color_temperature_max_value_ - color_temp_int;
       }
+      color_temp_int += color_temp_int % 2;
       this->parent_->set_integer_datapoint_value(*this->color_temperature_id_, color_temp_int);
     }
 
@@ -179,6 +215,7 @@ void TuyaLight::write_state(light::LightState *state) {
       auto brightness_int = static_cast<uint32_t>(brightness * this->max_value_);
       brightness_int = std::max(brightness_int, this->min_value_);
 
+      brightness_int += brightness_int % 2;
       this->parent_->set_integer_datapoint_value(*this->dimmer_id_, brightness_int);
     }
   }
