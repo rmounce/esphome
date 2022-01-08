@@ -184,6 +184,10 @@ async def to_code(config):
         [f"platformio/framework-arduinoespressif8266 @ {conf[CONF_SOURCE]}"],
     )
 
+    # Fix 802.11n
+    # https://github.com/esp8266/Arduino/issues/7965
+    cg.add_build_flag("-DPIO_FRAMEWORK_ARDUINO_ESPRESSIF_SDK22x_190313")
+
     # Default for platformio is LWIP2_LOW_MEMORY with:
     #  - MSS=536
     #  - LWIP_FEATURES enabled
