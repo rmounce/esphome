@@ -131,7 +131,6 @@ void MideaIR::transmit_(MideaData &data) {
   data.finalize();
   auto transmit = this->transmitter_->transmit();
   remote_base::MideaProtocol().encode(transmit.get_data(), data);
-  transmit.set_send_times(2);
   transmit.perform();
 }
 
