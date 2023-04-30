@@ -131,12 +131,14 @@ def _parse_platform_version(value):
 
 
 CONF_PLATFORM_VERSION = "platform_version"
+CONF_SDK_VERSION = "sdk_version"
 ARDUINO_FRAMEWORK_SCHEMA = cv.All(
     cv.Schema(
         {
             cv.Optional(CONF_VERSION, default="recommended"): cv.string_strict,
             cv.Optional(CONF_SOURCE): cv.string_strict,
             cv.Optional(CONF_PLATFORM_VERSION): _parse_platform_version,
+            cv.Optional(CONF_SDK_VERSION, default="SDK22x_190313"): cv.string_strict,
         }
     ),
     _arduino_check_versions,
@@ -186,7 +188,7 @@ async def to_code(config):
 
     # Fix 802.11n
     # https://github.com/esp8266/Arduino/issues/7965
-    cg.add_build_flag("-DPIO_FRAMEWORK_ARDUINO_ESPRESSIF_SDK22x_190313")
+    cg.add_build_flag("-DPIO_FRAMEWORK_ARDUINO_ESPRESSIF_" + conf[CONF_SDK_VERSION])
 
     # Default for platformio is LWIP2_LOW_MEMORY with:
     #  - MSS=536
