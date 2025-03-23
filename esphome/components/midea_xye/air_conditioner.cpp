@@ -512,8 +512,10 @@ void AirConditioner::do_follow_me(float temperature, bool beeper) {
 }
 
 void AirConditioner::set_static_pressure(uint8_t static_pressure) {
-  if (static_pressure > 15)
-    static_pressure = 15;
+  if (static_pressure > 15) {
+    ESP_LOGW(Constants::TAG, "Cannot set static pressure %d > 15", static_pressure);
+    return;
+  }
 
   prepareTXData(0xC6);
   TXData[8] = 0x10 | (static_pressure & 0x0F);
