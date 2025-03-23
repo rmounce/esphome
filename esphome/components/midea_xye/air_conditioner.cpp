@@ -345,6 +345,7 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
         if (need_publish)
           this->publish_state();
 
+        set_sensor(this->temperature_1_sensor_, CalculateTemp(RXData[RX_C0_BYTE_T1_TEMP]));
         set_sensor(this->temperature_2a_sensor_, CalculateTemp(RXData[RX_C0_BYTE_T2A_TEMP]));
         set_sensor(this->temperature_2b_sensor_, CalculateTemp(RXData[RX_C0_BYTE_T2B_TEMP]));
         set_sensor(this->temperature_3_sensor_, CalculateTemp(RXData[RX_C0_BYTE_T3_TEMP]));

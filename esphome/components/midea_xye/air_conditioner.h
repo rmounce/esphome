@@ -165,6 +165,7 @@ class AirConditioner : public PollingComponent, public climate::Climate, public 
 
   void dump_config() override;
   void set_outdoor_temperature_sensor(Sensor *sensor) { this->outdoor_sensor_ = sensor; }
+  void set_temperature_1_sensor(Sensor *sensor) { this->temperature_1_sensor_ = sensor; }
   void set_temperature_2a_sensor(Sensor *sensor) { this->temperature_2a_sensor_ = sensor; }
   void set_temperature_2b_sensor(Sensor *sensor) { this->temperature_2b_sensor_ = sensor; }
   void set_temperature_3_sensor(Sensor *sensor) { this->temperature_3_sensor_ = sensor; }
@@ -231,6 +232,7 @@ class AirConditioner : public PollingComponent, public climate::Climate, public 
   std::set<std::string> supported_custom_fan_modes_{};
   bool use_fahrenheit_;
   Sensor *outdoor_sensor_{nullptr};
+  Sensor *temperature_1_sensor_{nullptr};
   Sensor *temperature_2a_sensor_{nullptr};
   Sensor *temperature_2b_sensor_{nullptr};
   Sensor *temperature_3_sensor_{nullptr};
