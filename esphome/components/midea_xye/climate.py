@@ -49,6 +49,7 @@ from esphome.components.climate import (
 DEPENDENCIES = ["climate", "uart", "wifi"]
 AUTO_LOAD = ["number", "sensor"]
 CONF_OUTDOOR_TEMPERATURE = "outdoor_temperature"
+CONF_TEMPERATURE_1 = "temperature_1"
 CONF_TEMPERATURE_2A = "temperature_2a"
 CONF_TEMPERATURE_2B = "temperature_2b"
 CONF_TEMPERATURE_3 = "temperature_3"
@@ -154,6 +155,13 @@ CONFIG_SCHEMA = cv.All(
                 cv.Optional(CONF_MODE, default="BOX"): cv.enum(number.NUMBER_MODES, upper=True),
             }),
             cv.Optional(CONF_OUTDOOR_TEMPERATURE): sensor.sensor_schema(
+                unit_of_measurement=UNIT_CELSIUS,
+                icon=ICON_THERMOMETER,
+                accuracy_decimals=1,
+                device_class=DEVICE_CLASS_TEMPERATURE,
+                state_class=STATE_CLASS_MEASUREMENT,
+            ),
+            cv.Optional(CONF_TEMPERATURE_1): sensor.sensor_schema(
                 unit_of_measurement=UNIT_CELSIUS,
                 icon=ICON_THERMOMETER,
                 accuracy_decimals=1,
@@ -375,6 +383,9 @@ async def to_code(config):
     if CONF_OUTDOOR_TEMPERATURE in config:
         sens = await sensor.new_sensor(config[CONF_OUTDOOR_TEMPERATURE])
         cg.add(var.set_outdoor_temperature_sensor(sens))
+    if CONF_TEMPERATURE_1 in config:
+        sens = await sensor.new_sensor(config[CONF_TEMPERATURE_1])
+        cg.add(var.set_temperature_1_sensor(sens))
     if CONF_TEMPERATURE_2A in config:
         sens = await sensor.new_sensor(config[CONF_TEMPERATURE_2A])
         cg.add(var.set_temperature_2a_sensor(sens))
