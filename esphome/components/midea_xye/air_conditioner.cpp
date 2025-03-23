@@ -297,8 +297,9 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
             ForceReadNextCycle ==
                 1)  // Don't update below states unless mode is an ON state
         {
+          // XXX: Mask upper bits to avoid Celsius values being offset by 64C
           update_property(this->target_temperature,
-                          (float)RXData[RX_C0_BYTE_SET_TEMP], need_publish);
+                          (float)(RXData[RX_C0_BYTE_SET_TEMP] & 0x3F), need_publish);
           // Don't update the fan mode. Assume it set correctly.
 
           // Show Heating vs Heat at least in Heat mode. Will figure
