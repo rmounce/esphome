@@ -16,6 +16,12 @@ static void set_sensor(Sensor *sensor, float value) {
     sensor->publish_state(value);
 }
 
+static void set_number(number::Number *number, float value) {
+  if (number != nullptr &&
+      (!number->has_state() || number->state != value))
+    number->publish_state(value);
+}
+
 template <typename T>
 void update_property(T &property, const T &value, bool &flag) {
   if (property != value) {
@@ -340,6 +346,7 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
       }
       case 0xC4:
         set_sensor(this->outdoor_sensor_, CalculateTemp(RXData[21]));
+        set_number(this->static_pressure_number_, 0x0F & RXData[24]);
 
         if (RXData[9] != 0x30 || RXData[10] != 0x98 || RXData[11] != 0x00 ||
             RXData[12] != 0x00 || RXData[13] != 0x00 || RXData[14] != 0x01 ||
@@ -502,6 +509,24 @@ void AirConditioner::do_follow_me(float temperature, bool beeper) {
     ESP_LOGI(Constants::TAG, "Sent Follow-Me data.");
   }
 #endif
+}
+
+void AirConditioner::set_static_pressure(uint8_t static_pressure) {
+  if (static_pressure > 15)
+    static_pressure = 15;
+
+  prepareTXData(0xC6);
+  TXData[8] = 0x10 | (static_pressure & 0x0F);
+  TXData[10] = 4;
+  TXData[11] = lastFollowMeTemperature;
+  TXData[14] = CalculateCRC(TXData, TX_LEN);
+
+  if (this->mode == ClimateMode::CLIMATE_MODE_OFF) {
+    sendRecv(0xC6);
+    ESP_LOGI(Constants::TAG, "Set static pressure to %d", static_pressure);
+  } else {
+    ESP_LOGW(Constants::TAG, "Cannot set static pressure while unit is running");
+  }
 }
 
 void AirConditioner::do_swing_step() {
