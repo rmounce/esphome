@@ -373,7 +373,7 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
               update_property(this->target_temperature, incoming_target_temp, need_publish);
             }
           } else {
-            incoming_target_temp = CalculateTemp(RXData[RX_C4_BYTE_SET_TEMP]);
+            incoming_target_temp = RXData[RX_C4_BYTE_SET_TEMP] & 0x3F;
             if (incoming_target_temp != this->target_temperature) {
               need_publish = true;
               update_property(this->target_temperature, incoming_target_temp, need_publish);
