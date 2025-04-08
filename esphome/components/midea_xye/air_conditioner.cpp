@@ -201,6 +201,13 @@ void AirConditioner::update() {
       TXData[14] = CalculateCRC(TXData, TX_LEN);
       sendRecv(cmdSent);
       followMeInit = true;
+      // Send an update message for good luck
+      cmdSent = 0xC6;
+      prepareTXData(cmdSent);
+      TXData[10] = 2;
+      TXData[11] = lastFollowMeTemperature;
+      TXData[14] = CalculateCRC(TXData, TX_LEN);
+      sendRecv(cmdSent);
     }
   } else {
     // construct query command
