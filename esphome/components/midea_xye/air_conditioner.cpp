@@ -345,10 +345,10 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
         if (need_publish)
           this->publish_state();
 
-        set_sensor(this->temperature_1_sensor_, CalculateTemp(RXData[RX_C0_BYTE_T1_TEMP]));
-        set_sensor(this->temperature_2a_sensor_, CalculateTemp(RXData[RX_C0_BYTE_T2A_TEMP]));
-        set_sensor(this->temperature_2b_sensor_, CalculateTemp(RXData[RX_C0_BYTE_T2B_TEMP]));
-        set_sensor(this->temperature_3_sensor_, CalculateTemp(RXData[RX_C0_BYTE_T3_TEMP]));
+        set_temp_sensor_if_valid(this->temperature_1_sensor_, RXData[RX_C0_BYTE_T1_TEMP]);
+        set_temp_sensor_if_valid(this->temperature_2a_sensor_, RXData[RX_C0_BYTE_T2A_TEMP]);
+        set_temp_sensor_if_valid(this->temperature_2b_sensor_, RXData[RX_C0_BYTE_T2B_TEMP]);
+        set_temp_sensor_if_valid(this->temperature_3_sensor_, RXData[RX_C0_BYTE_T3_TEMP]);
         set_sensor(this->current_sensor_, RXData[RX_C0_BYTE_CURRENT]);
         set_sensor(this->timer_start_sensor_, CalculateGetTime(RXData[RX_C0_BYTE_TIMER_START]));
         set_sensor(this->timer_stop_sensor_, CalculateGetTime(RXData[RX_C0_BYTE_TIMER_STOP]));
@@ -468,6 +468,13 @@ uint32_t AirConditioner::CalculateGetTime(uint8_t time) {
 }
 
 float AirConditioner::CalculateTemp(uint8_t byte) { return (byte - 0x28) / 2.0; }
+
+void AirConditioner::set_temp_sensor_if_valid(Sensor *sensor, uint8_t raw_byte) {
+  if (raw_byte != 0) {
+    float value = CalculateTemp(raw_byte);
+    set_sensor(sensor, value);
+  }
+}
 
 ClimateTraits AirConditioner::traits() {
   auto traits = ClimateTraits();

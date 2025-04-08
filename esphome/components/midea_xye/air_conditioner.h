@@ -251,6 +251,7 @@ class AirConditioner : public PollingComponent, public climate::Climate, public 
   uint8_t CalculateSetTime(uint32_t time);
   uint32_t CalculateGetTime(uint8_t time);
   static float CalculateTemp(uint8_t byte);
+  void set_temp_sensor_if_valid(Sensor *sensor, uint8_t raw_byte);
 };
 
 }  // namespace ac
