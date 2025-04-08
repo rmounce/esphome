@@ -14,7 +14,6 @@ class StaticPressureNumber : public number::Number {
   void set_parent(StaticPressureInterface *parent) { this->parent_ = parent; }
 
   void control(float value) override {
-    this->publish_state(value);
     if (parent_) {
       parent_->set_static_pressure(static_cast<uint8_t>(value));
     }
