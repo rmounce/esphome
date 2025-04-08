@@ -432,6 +432,8 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
         uint16_t protect_flags = (RXData[RX_C0_BYTE_PROTECT_FLAGS1] << 0) | (RXData[RX_C0_BYTE_PROTECT_FLAGS2] << 8);
 #ifdef USE_BINARY_SENSOR
         set_binary_sensor(this->defrost_sensor_, (protect_flags & 0x02) == 2);
+        set_binary_sensor(this->compressor_status_sensor_, RXData[19] & 0x01);
+        set_binary_sensor(this->outdoor_fan_status_sensor_, RXData[19] & 0x02);
 #endif
         set_sensor(this->protect_flags_sensor_, protect_flags);
 #ifdef USE_TEXT_SENSOR

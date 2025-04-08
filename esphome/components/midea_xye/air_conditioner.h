@@ -154,6 +154,7 @@ using climate::ClimateMode;
 using climate::ClimatePreset;
 using climate::ClimateSwingMode;
 using sensor::Sensor;
+using binary_sensor::BinarySensor;
 
 class Constants {
  public:
@@ -200,6 +201,8 @@ class AirConditioner : public PollingComponent, public climate::Climate, public 
 #endif
   void set_humidity_setpoint_sensor(Sensor *sensor) { this->humidity_sensor_ = sensor; }
   void set_power_sensor(Sensor *sensor) { this->power_sensor_ = sensor; }
+  void set_compressor_status_sensor(BinarySensor *binary_sensor) { this->compressor_status_sensor_ = binary_sensor; }
+  void set_outdoor_fan_status_sensor(BinarySensor *binary_sensor) { this->outdoor_fan_status_sensor_ = binary_sensor; }
   void set_use_fahrenheit(bool yesno) { this->use_fahrenheit_ = yesno; }
 #ifdef USE_SWITCH
   void set_use_fahrenheit_switch(switch_::Switch *sw) { this->use_fahrenheit_switch_ = sw; }
@@ -280,6 +283,8 @@ class AirConditioner : public PollingComponent, public climate::Climate, public 
 #endif
   Sensor *humidity_sensor_{nullptr};
   Sensor *power_sensor_{nullptr};
+  BinarySensor *compressor_status_sensor_{nullptr};
+  BinarySensor *outdoor_fan_status_sensor_{nullptr};
   StaticPressureNumber *static_pressure_number_{nullptr};
   ClimateMode last_on_mode_;
 
