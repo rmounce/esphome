@@ -1,6 +1,6 @@
 from esphome.core import coroutine
 from esphome import automation
-from esphome.components import climate, sensor, uart, remote_transmitter, number
+from esphome.components import climate, sensor, uart, remote_transmitter, number, binary_sensor
 from esphome.components.remote_base import CONF_TRANSMITTER_ID
 import esphome.config_validation as cv
 import esphome.codegen as cg
@@ -25,6 +25,7 @@ from esphome.const import (
     DEVICE_CLASS_TEMPERATURE,
     DEVICE_CLASS_HUMIDITY,
     DEVICE_CLASS_DURATION,
+    DEVICE_CLASS_RUNNING,
     DEVICE_CLASS_EMPTY,
     ICON_POWER,
     ICON_THERMOMETER,
@@ -48,7 +49,7 @@ from esphome.components.climate import (
 
 #CODEOWNERS = ["@dudanov"]
 DEPENDENCIES = ["climate", "uart", "wifi"]
-AUTO_LOAD = ["number", "sensor"]
+AUTO_LOAD = ["binary_sensor", "number", "sensor"]
 CONF_OUTDOOR_TEMPERATURE = "outdoor_temperature"
 CONF_TEMPERATURE_1 = "temperature_1"
 CONF_TEMPERATURE_2A = "temperature_2a"
@@ -62,6 +63,8 @@ CONF_PROTECT_FLAGS = "protect_flags"
 CONF_POWER_USAGE = "power_usage"
 CONF_HUMIDITY_SETPOINT = "humidity_setpoint"
 CONF_STATIC_PRESSURE = "static_pressure"
+CONF_COMPRESSOR_STATUS = "compressor_status"
+CONF_OUTDOOR_FAN_STATUS = "outdoor_fan_status"
 midea_ac_ns = cg.esphome_ns.namespace("midea").namespace("ac")
 AirConditioner = midea_ac_ns.class_("AirConditioner", climate.Climate, cg.Component)
 StaticPressureNumber = midea_ac_ns.class_("StaticPressureNumber", number.Number, cg.Component)
@@ -241,6 +244,12 @@ CONFIG_SCHEMA = cv.All(
                 device_class=DEVICE_CLASS_HUMIDITY,
                 state_class=STATE_CLASS_MEASUREMENT,
             ),
+            cv.Optional(CONF_COMPRESSOR_STATUS): binary_sensor.binary_sensor_schema(
+                device_class=DEVICE_CLASS_RUNNING,
+            ),
+            cv.Optional(CONF_OUTDOOR_FAN_STATUS): binary_sensor.binary_sensor_schema(
+                device_class=DEVICE_CLASS_RUNNING,
+            ),
         }
     )
     .extend(uart.UART_DEVICE_SCHEMA)
@@ -419,4 +428,10 @@ async def to_code(config):
     if CONF_HUMIDITY_SETPOINT in config:
         sens = await sensor.new_sensor(config[CONF_HUMIDITY_SETPOINT])
         cg.add(var.set_humidity_setpoint_sensor(sens))
+    if CONF_COMPRESSOR_STATUS in config:
+        sens = await binary_sensor.new_binary_sensor(config[CONF_COMPRESSOR_STATUS])
+        cg.add(var.set_compressor_status_sensor(sens))
+    if CONF_OUTDOOR_FAN_STATUS in config:
+        sens = await binary_sensor.new_binary_sensor(config[CONF_OUTDOOR_FAN_STATUS])
+        cg.add(var.set_outdoor_fan_status_sensor(sens))
     #cg.add_library("dudanov/MideaUART", "1.1.8")

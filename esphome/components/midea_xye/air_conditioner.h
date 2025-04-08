@@ -6,6 +6,7 @@
 #include "esphome/components/climate/climate_traits.h"
 #include "esphome/components/number/number.h"
 #include "esphome/components/sensor/sensor.h"
+#include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/uart/uart.h"
 #include "esphome/core/component.h"
 #include "esphome/core/defines.h"
@@ -139,6 +140,7 @@ using climate::ClimatePreset;
 using climate::ClimateSwingMode;
 using climate::ClimateTraits;
 using sensor::Sensor;
+using binary_sensor::BinarySensor;
 
 class Constants {
  public:
@@ -176,6 +178,8 @@ class AirConditioner : public PollingComponent, public climate::Climate, public 
   void set_protect_flags_sensor(Sensor *sensor) { this->protect_flags_sensor_ = sensor; }
   void set_humidity_setpoint_sensor(Sensor *sensor) { this->humidity_sensor_ = sensor; }
   void set_power_sensor(Sensor *sensor) { this->power_sensor_ = sensor; }
+  void set_compressor_status_sensor(BinarySensor *binary_sensor) { this->compressor_status_sensor_ = binary_sensor; }
+  void set_outdoor_fan_status_sensor(BinarySensor *binary_sensor) { this->outdoor_fan_status_sensor_ = binary_sensor; }
   void set_use_fahrenheit(bool yesno) { this->use_fahrenheit_ = yesno; }
   void set_static_pressure_number(StaticPressureNumber *number) {
     this->static_pressure_number_ = number;
@@ -243,6 +247,8 @@ class AirConditioner : public PollingComponent, public climate::Climate, public 
   Sensor *protect_flags_sensor_{nullptr};
   Sensor *humidity_sensor_{nullptr};
   Sensor *power_sensor_{nullptr};
+  BinarySensor *compressor_status_sensor_{nullptr};
+  BinarySensor *outdoor_fan_status_sensor_{nullptr};
   StaticPressureNumber *static_pressure_number_{nullptr};
   ClimateMode last_on_mode_;
 

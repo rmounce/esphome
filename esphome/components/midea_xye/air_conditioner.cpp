@@ -15,6 +15,11 @@ static void set_sensor(Sensor *sensor, float value) {
     sensor->publish_state(value);
 }
 
+static void set_binary_sensor(BinarySensor *binary_sensor, bool value) {
+  if (binary_sensor != nullptr && (!binary_sensor->has_state() || binary_sensor->state != value))
+    binary_sensor->publish_state(value);
+}
+
 static void set_number(number::Number *number, float value) {
   if (number != nullptr && (!number->has_state() || number->state != value))
     number->publish_state(value);
@@ -356,6 +361,8 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
                    (RXData[RX_C0_BYTE_ERROR_FLAGS1] << 0) | (RXData[RX_C0_BYTE_ERROR_FLAGS2] << 8));
         set_sensor(this->protect_flags_sensor_,
                    (RXData[RX_C0_BYTE_PROTECT_FLAGS1] << 0) | (RXData[RX_C0_BYTE_PROTECT_FLAGS2] << 8));
+        set_binary_sensor(this->compressor_status_sensor_, RXData[19] & 0x01);
+        set_binary_sensor(this->outdoor_fan_status_sensor_, RXData[19] & 0x02);
         break;
       }
       case 0xC4:
