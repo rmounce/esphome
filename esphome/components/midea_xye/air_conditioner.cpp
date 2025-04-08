@@ -549,19 +549,17 @@ void AirConditioner::set_static_pressure(uint8_t static_pressure) {
     ESP_LOGW(Constants::TAG, "Cannot set static pressure %d > 15", static_pressure);
     return;
   }
-
+  if (this->mode != ClimateMode::CLIMATE_MODE_OFF) {
+    ESP_LOGW(Constants::TAG, "Cannot set static pressure while unit is running");
+    return;
+  }
   prepareTXData(0xC6);
   TXData[8] = 0x10 | (static_pressure & 0x0F);
   TXData[10] = 4;
   TXData[11] = lastFollowMeTemperature;
   TXData[14] = CalculateCRC(TXData, TX_LEN);
-
-  if (this->mode == ClimateMode::CLIMATE_MODE_OFF) {
-    sendRecv(0xC6);
-    ESP_LOGI(Constants::TAG, "Set static pressure to %d", static_pressure);
-  } else {
-    ESP_LOGW(Constants::TAG, "Cannot set static pressure while unit is running");
-  }
+  sendRecv(0xC6);
+  ESP_LOGI(Constants::TAG, "Set static pressure to %d", static_pressure);
 }
 
 void AirConditioner::do_swing_step() {
