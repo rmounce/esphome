@@ -5,6 +5,9 @@
 #include "esphome/components/climate/climate.h"
 #include "esphome/components/climate/climate_traits.h"
 #include "esphome/components/number/number.h"
+#ifdef USE_SWITCH
+#include "esphome/components/switch/switch.h"
+#endif
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/uart/uart.h"
 #include "esphome/core/component.h"
@@ -185,6 +188,9 @@ class AirConditioner : public PollingComponent, public climate::Climate, public 
   void set_humidity_setpoint_sensor(Sensor *sensor) { this->humidity_sensor_ = sensor; }
   void set_power_sensor(Sensor *sensor) { this->power_sensor_ = sensor; }
   void set_use_fahrenheit(bool yesno) { this->use_fahrenheit_ = yesno; }
+#ifdef USE_SWITCH
+  void set_use_fahrenheit_switch(switch_::Switch *sw) { this->use_fahrenheit_switch_ = sw; }
+#endif
   void set_static_pressure_number(StaticPressureNumber *number) {
     this->static_pressure_number_ = number;
     number->set_parent(this);
@@ -240,6 +246,9 @@ class AirConditioner : public PollingComponent, public climate::Climate, public 
   std::vector<const char *> supported_custom_presets_{};
   std::vector<const char *> supported_custom_fan_modes_{};
   bool use_fahrenheit_;
+#ifdef USE_SWITCH
+  switch_::Switch *use_fahrenheit_switch_{nullptr};
+#endif
   Sensor *outdoor_sensor_{nullptr};
   Sensor *temperature_2a_sensor_{nullptr};
   Sensor *temperature_2b_sensor_{nullptr};

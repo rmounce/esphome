@@ -47,7 +47,7 @@ from esphome.components.climate import (
 )
 
 #CODEOWNERS = ["@dudanov"]
-DEPENDENCIES = ["climate", "uart", "wifi"]
+DEPENDENCIES = ["climate", "uart", "wifi", "switch"]
 AUTO_LOAD = ["number", "sensor"]
 CONF_OUTDOOR_TEMPERATURE = "outdoor_temperature"
 CONF_TEMPERATURE_2A = "temperature_2a"

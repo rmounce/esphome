@@ -61,6 +61,12 @@ void AirConditioner::setup() {
 
   // Start up in Auto fan mode (since unit doesn't report it correctly)
   this->fan_mode = ClimateFanMode::CLIMATE_FAN_AUTO;
+
+#ifdef USE_SWITCH
+  if (this->use_fahrenheit_switch_ != nullptr) {
+    this->use_fahrenheit_switch_->publish_state(this->use_fahrenheit_);
+  }
+#endif
 }
 
 // TODO: Not sure if we really need this.
