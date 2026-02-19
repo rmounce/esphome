@@ -30,6 +30,13 @@ static void set_text_sensor(text_sensor::TextSensor *sens, const std::string &va
 }
 #endif
 
+#ifdef USE_BINARY_SENSOR
+static void set_binary_sensor(binary_sensor::BinarySensor *sens, bool value) {
+  if (sens != nullptr && (!sens->has_state() || sens->state != value))
+    sens->publish_state(value);
+}
+#endif
+
 template<typename T> void update_property(T &property, const T &value, bool &flag) {
   if (property != value) {
     property = value;
@@ -419,8 +426,11 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
         set_sensor(this->current_sensor_, RXData[RX_C0_BYTE_CURRENT]);
         set_sensor(this->timer_start_sensor_, CalculateGetTime(RXData[RX_C0_BYTE_TIMER_START]));
         set_sensor(this->timer_stop_sensor_, CalculateGetTime(RXData[RX_C0_BYTE_TIMER_STOP]));
-        set_sensor(this->error_flags_sensor_,
-                   (RXData[RX_C0_BYTE_ERROR_FLAGS1] << 0) | (RXData[RX_C0_BYTE_ERROR_FLAGS2] << 8));
+        uint16_t error_flags = (RXData[RX_C0_BYTE_ERROR_FLAGS1] << 0) | (RXData[RX_C0_BYTE_ERROR_FLAGS2] << 8);
+        set_sensor(this->error_flags_sensor_, error_flags);
+#ifdef USE_BINARY_SENSOR
+        set_binary_sensor(this->defrost_sensor_, (error_flags & 0x02) == 2);
+#endif
         set_sensor(this->protect_flags_sensor_,
                    (RXData[RX_C0_BYTE_PROTECT_FLAGS1] << 0) | (RXData[RX_C0_BYTE_PROTECT_FLAGS2] << 8));
 #ifdef USE_TEXT_SENSOR

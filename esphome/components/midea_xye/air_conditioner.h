@@ -8,6 +8,9 @@
 #ifdef USE_SWITCH
 #include "esphome/components/switch/switch.h"
 #endif
+#ifdef USE_BINARY_SENSOR
+#include "esphome/components/binary_sensor/binary_sensor.h"
+#endif
 #include "esphome/components/sensor/sensor.h"
 #ifdef USE_TEXT_SENSOR
 #include "esphome/components/text_sensor/text_sensor.h"
@@ -188,6 +191,9 @@ class AirConditioner : public PollingComponent, public climate::Climate, public 
   void set_timer_stop_sensor(Sensor *sensor) { this->timer_stop_sensor_ = sensor; }
   void set_error_flags_sensor(Sensor *sensor) { this->error_flags_sensor_ = sensor; }
   void set_protect_flags_sensor(Sensor *sensor) { this->protect_flags_sensor_ = sensor; }
+#ifdef USE_BINARY_SENSOR
+  void set_defrost_sensor(binary_sensor::BinarySensor *sensor) { this->defrost_sensor_ = sensor; }
+#endif
 #ifdef USE_TEXT_SENSOR
   void set_fan_speed_sensor(text_sensor::TextSensor *sensor) { this->fan_speed_sensor_ = sensor; }
 #endif
@@ -264,6 +270,9 @@ class AirConditioner : public PollingComponent, public climate::Climate, public 
   Sensor *timer_stop_sensor_{nullptr};
   Sensor *error_flags_sensor_{nullptr};
   Sensor *protect_flags_sensor_{nullptr};
+#ifdef USE_BINARY_SENSOR
+  binary_sensor::BinarySensor *defrost_sensor_{nullptr};
+#endif
 #ifdef USE_TEXT_SENSOR
   text_sensor::TextSensor *fan_speed_sensor_{nullptr};
 #endif

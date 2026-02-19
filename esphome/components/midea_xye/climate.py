@@ -1,6 +1,6 @@
 from esphome.core import coroutine
 from esphome import automation
-from esphome.components import climate, sensor, text_sensor, uart, remote_transmitter, number
+from esphome.components import binary_sensor, climate, sensor, text_sensor, uart, remote_transmitter, number
 from esphome.components.remote_base import CONF_TRANSMITTER_ID
 import esphome.config_validation as cv
 import esphome.codegen as cg
@@ -26,6 +26,7 @@ from esphome.const import (
     DEVICE_CLASS_HUMIDITY,
     DEVICE_CLASS_DURATION,
     DEVICE_CLASS_EMPTY,
+    ENTITY_CATEGORY_DIAGNOSTIC,
     ICON_POWER,
     ICON_THERMOMETER,
     ICON_FAN,
@@ -49,7 +50,7 @@ from esphome.components.climate import (
 
 #CODEOWNERS = ["@dudanov"]
 DEPENDENCIES = ["climate", "uart", "wifi", "switch", "text_sensor"]
-AUTO_LOAD = ["number", "sensor", "text_sensor"]
+AUTO_LOAD = ["binary_sensor", "number", "sensor", "text_sensor"]
 CONF_OUTDOOR_TEMPERATURE = "outdoor_temperature"
 CONF_TEMPERATURE_2A = "temperature_2a"
 CONF_TEMPERATURE_2B = "temperature_2b"
@@ -57,6 +58,7 @@ CONF_TEMPERATURE_3 = "temperature_3"
 CONF_CURRENT = "current"
 CONF_TIMER_START = "timer_start"
 CONF_TIMER_STOP = "timer_stop"
+CONF_DEFROST = "defrost"
 CONF_ERROR_FLAGS = "error_flags"
 CONF_PROTECT_FLAGS = "protect_flags"
 CONF_FAN_SPEED = "fan_speed"
@@ -205,6 +207,10 @@ CONFIG_SCHEMA = cv.All(
                 accuracy_decimals=0,
                 device_class=DEVICE_CLASS_DURATION,
                 state_class=STATE_CLASS_MEASUREMENT,
+            ),
+            cv.Optional(CONF_DEFROST): binary_sensor.binary_sensor_schema(
+                icon="mdi:snowflake-thermometer",
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
             cv.Optional(CONF_ERROR_FLAGS): sensor.sensor_schema(
                 unit_of_measurement=UNIT_EMPTY,
@@ -401,6 +407,9 @@ async def to_code(config):
     if CONF_TIMER_STOP in config:
         sens = await sensor.new_sensor(config[CONF_TIMER_STOP])
         cg.add(var.set_timer_stop_sensor(sens))
+    if CONF_DEFROST in config:
+        sens = await binary_sensor.new_binary_sensor(config[CONF_DEFROST])
+        cg.add(var.set_defrost_sensor(sens))
     if CONF_ERROR_FLAGS in config:
         sens = await sensor.new_sensor(config[CONF_ERROR_FLAGS])
         cg.add(var.set_error_flags_sensor(sens))

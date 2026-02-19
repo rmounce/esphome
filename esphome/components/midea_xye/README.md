@@ -76,6 +76,8 @@ climate:
       name: Timer Start
     timer_stop:                 # Optional. Off timer duration
       name: Timer Stop
+    defrost:                    # Optional. Defrost active (ON when Error Flags = 2)
+      name: Defrost Active
     error_flags:                # Optional.
       name: Error Flags
     protect_flags:              # Optional. 
