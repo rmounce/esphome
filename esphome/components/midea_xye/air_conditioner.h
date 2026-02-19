@@ -9,6 +9,9 @@
 #include "esphome/components/switch/switch.h"
 #endif
 #include "esphome/components/sensor/sensor.h"
+#ifdef USE_TEXT_SENSOR
+#include "esphome/components/text_sensor/text_sensor.h"
+#endif
 #include "esphome/components/uart/uart.h"
 #include "esphome/core/component.h"
 #include "esphome/core/defines.h"
@@ -185,6 +188,9 @@ class AirConditioner : public PollingComponent, public climate::Climate, public 
   void set_timer_stop_sensor(Sensor *sensor) { this->timer_stop_sensor_ = sensor; }
   void set_error_flags_sensor(Sensor *sensor) { this->error_flags_sensor_ = sensor; }
   void set_protect_flags_sensor(Sensor *sensor) { this->protect_flags_sensor_ = sensor; }
+#ifdef USE_TEXT_SENSOR
+  void set_fan_speed_sensor(text_sensor::TextSensor *sensor) { this->fan_speed_sensor_ = sensor; }
+#endif
   void set_humidity_setpoint_sensor(Sensor *sensor) { this->humidity_sensor_ = sensor; }
   void set_power_sensor(Sensor *sensor) { this->power_sensor_ = sensor; }
   void set_use_fahrenheit(bool yesno) { this->use_fahrenheit_ = yesno; }
@@ -258,6 +264,9 @@ class AirConditioner : public PollingComponent, public climate::Climate, public 
   Sensor *timer_stop_sensor_{nullptr};
   Sensor *error_flags_sensor_{nullptr};
   Sensor *protect_flags_sensor_{nullptr};
+#ifdef USE_TEXT_SENSOR
+  text_sensor::TextSensor *fan_speed_sensor_{nullptr};
+#endif
   Sensor *humidity_sensor_{nullptr};
   Sensor *power_sensor_{nullptr};
   StaticPressureNumber *static_pressure_number_{nullptr};

@@ -23,6 +23,13 @@ static void set_number(number::Number *number, float value) {
     number->publish_state(value);
 }
 
+#ifdef USE_TEXT_SENSOR
+static void set_text_sensor(text_sensor::TextSensor *sens, const std::string &value) {
+  if (sens != nullptr && (!sens->has_state() || sens->get_raw_state() != value))
+    sens->publish_state(value);
+}
+#endif
+
 template<typename T> void update_property(T &property, const T &value, bool &flag) {
   if (property != value) {
     property = value;
@@ -416,6 +423,26 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
                    (RXData[RX_C0_BYTE_ERROR_FLAGS1] << 0) | (RXData[RX_C0_BYTE_ERROR_FLAGS2] << 8));
         set_sensor(this->protect_flags_sensor_,
                    (RXData[RX_C0_BYTE_PROTECT_FLAGS1] << 0) | (RXData[RX_C0_BYTE_PROTECT_FLAGS2] << 8));
+#ifdef USE_TEXT_SENSOR
+        // Fan speed as text for Home Assistant: Off, Low, Medium, High
+        const char *fan_speed_text = "Off";
+        switch (current_fan_speed) {
+          case FAN_MODE_LOW:
+            fan_speed_text = "Low";
+            break;
+          case FAN_MODE_MEDIUM:
+            fan_speed_text = "Medium";
+            break;
+          case FAN_MODE_HIGH:
+            fan_speed_text = "High";
+            break;
+          case FAN_MODE_OFF:
+          default:
+            fan_speed_text = "Off";
+            break;
+        }
+        set_text_sensor(this->fan_speed_sensor_, fan_speed_text);
+#endif
         break;
       }
       case 0xC4:

@@ -80,6 +80,8 @@ climate:
       name: Error Flags
     protect_flags:              # Optional. 
       name: Protect Flags
+    fan_speed:                  # Optional. Current fan speed (Off, Low, Medium, High)
+      name: Fan Speed
 
 ```
 

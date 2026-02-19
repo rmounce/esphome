@@ -1,6 +1,6 @@
 from esphome.core import coroutine
 from esphome import automation
-from esphome.components import climate, sensor, uart, remote_transmitter, number
+from esphome.components import climate, sensor, text_sensor, uart, remote_transmitter, number
 from esphome.components.remote_base import CONF_TRANSMITTER_ID
 import esphome.config_validation as cv
 import esphome.codegen as cg
@@ -28,6 +28,7 @@ from esphome.const import (
     DEVICE_CLASS_EMPTY,
     ICON_POWER,
     ICON_THERMOMETER,
+    ICON_FAN,
     ICON_WATER_PERCENT,
     ICON_TIMER,
     ICON_BUG,
@@ -47,8 +48,8 @@ from esphome.components.climate import (
 )
 
 #CODEOWNERS = ["@dudanov"]
-DEPENDENCIES = ["climate", "uart", "wifi", "switch"]
-AUTO_LOAD = ["number", "sensor"]
+DEPENDENCIES = ["climate", "uart", "wifi", "switch", "text_sensor"]
+AUTO_LOAD = ["number", "sensor", "text_sensor"]
 CONF_OUTDOOR_TEMPERATURE = "outdoor_temperature"
 CONF_TEMPERATURE_2A = "temperature_2a"
 CONF_TEMPERATURE_2B = "temperature_2b"
@@ -58,6 +59,7 @@ CONF_TIMER_START = "timer_start"
 CONF_TIMER_STOP = "timer_stop"
 CONF_ERROR_FLAGS = "error_flags"
 CONF_PROTECT_FLAGS = "protect_flags"
+CONF_FAN_SPEED = "fan_speed"
 CONF_POWER_USAGE = "power_usage"
 CONF_HUMIDITY_SETPOINT = "humidity_setpoint"
 CONF_STATIC_PRESSURE = "static_pressure"
@@ -217,6 +219,9 @@ CONFIG_SCHEMA = cv.All(
                 accuracy_decimals=0,
                 device_class=DEVICE_CLASS_EMPTY,
                 state_class=STATE_CLASS_MEASUREMENT,
+            ),
+            cv.Optional(CONF_FAN_SPEED): text_sensor.text_sensor_schema(
+                icon=ICON_FAN,
             ),
 
             cv.Optional(CONF_POWER_USAGE): sensor.sensor_schema(
@@ -402,6 +407,9 @@ async def to_code(config):
     if CONF_PROTECT_FLAGS in config:
         sens = await sensor.new_sensor(config[CONF_PROTECT_FLAGS])
         cg.add(var.set_protect_flags_sensor(sens))
+    if CONF_FAN_SPEED in config:
+        sens = await text_sensor.new_text_sensor(config[CONF_FAN_SPEED])
+        cg.add(var.set_fan_speed_sensor(sens))
     if CONF_POWER_USAGE in config:
         sens = await sensor.new_sensor(config[CONF_POWER_USAGE])
         cg.add(var.set_power_sensor(sens))
