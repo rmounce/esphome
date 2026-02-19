@@ -428,11 +428,11 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
         set_sensor(this->timer_stop_sensor_, CalculateGetTime(RXData[RX_C0_BYTE_TIMER_STOP]));
         uint16_t error_flags = (RXData[RX_C0_BYTE_ERROR_FLAGS1] << 0) | (RXData[RX_C0_BYTE_ERROR_FLAGS2] << 8);
         set_sensor(this->error_flags_sensor_, error_flags);
+        uint16_t protect_flags = (RXData[RX_C0_BYTE_PROTECT_FLAGS1] << 0) | (RXData[RX_C0_BYTE_PROTECT_FLAGS2] << 8);
 #ifdef USE_BINARY_SENSOR
         set_binary_sensor(this->defrost_sensor_, (error_flags & 0x02) == 2);
 #endif
-        set_sensor(this->protect_flags_sensor_,
-                   (RXData[RX_C0_BYTE_PROTECT_FLAGS1] << 0) | (RXData[RX_C0_BYTE_PROTECT_FLAGS2] << 8));
+        set_sensor(this->protect_flags_sensor_, protect_flags);
 #ifdef USE_TEXT_SENSOR
         // Fan speed as text for Home Assistant: Off, Low, Medium, High
         const char *fan_speed_text = "Off";
