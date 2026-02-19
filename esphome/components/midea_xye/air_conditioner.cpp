@@ -351,6 +351,12 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
           // Don't update the fan mode. Assume it set correctly.
           // Show Heating vs Heat at least in Heat mode. Will figure
           // out how to determine if compressor is on in other modes later.
+
+          // If we are using C, update the temperature here. Mask out 0x40. If we are using F, update
+          // via 0xC4.
+          if (!this->use_fahrenheit_) {
+            update_property(this->target_temperature, (float) (RXData[RX_C0_BYTE_SET_TEMP] & 0xBF), need_publish);
+          }
           update_property(this->current_temperature, CalculateTemp(RXData[RX_C0_BYTE_T1_TEMP]), need_publish);
           if ((this->mode == climate::CLIMATE_MODE_HEAT) && (RXData[9] & 0x0F) != 0x00) {
             this->action = climate::CLIMATE_ACTION_HEATING;
@@ -413,24 +419,15 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
         if (mode != ClimateMode::CLIMATE_MODE_OFF ||
             ForceReadNextCycle == 1)  // Don't update below states unless mode is an ON state
         {
-          float incoming_target_temp = 0.0;
           if (this->use_fahrenheit_) {
+            float incoming_target_temp = 0.0;
             incoming_target_temp = (float) (((RXData[RX_C4_BYTE_SET_TEMP] - 0x87) - 32.0) * 5.0 / 9.0);
             if (incoming_target_temp != this->target_temperature) {
               need_publish = true;
               update_property(this->target_temperature, incoming_target_temp, need_publish);
             }
-          } else {
-            incoming_target_temp = CalculateTemp(RXData[RX_C4_BYTE_SET_TEMP]);
-            if (incoming_target_temp != this->target_temperature) {
-              need_publish = true;
-              update_property(this->target_temperature, incoming_target_temp, need_publish);
-            }
           }
-          if (need_publish)
-            this->publish_state();
         }
-
         if (RXData[9] != 0x30 || RXData[10] != 0x98 || RXData[11] != 0x00 || RXData[12] != 0x00 || RXData[13] != 0x00 ||
             RXData[14] != 0x01 || RXData[15] != 0x20 || RXData[19] != 0xBC || RXData[20] != 0xD6 ||
             RXData[22] != 0x00 || RXData[23] != 0x00 || RXData[24] != 0xFF || RXData[25] != 0x00 ||
