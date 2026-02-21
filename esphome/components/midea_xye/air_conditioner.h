@@ -156,7 +156,9 @@ using climate::ClimateMode;
 using climate::ClimatePreset;
 using climate::ClimateSwingMode;
 using sensor::Sensor;
+#ifdef USE_BINARY_SENSOR
 using binary_sensor::BinarySensor;
+#endif
 
 class Constants {
  public:
@@ -197,14 +199,15 @@ class AirConditioner : public PollingComponent, public climate::Climate, public 
   void set_protect_flags_sensor(Sensor *sensor) { this->protect_flags_sensor_ = sensor; }
 #ifdef USE_BINARY_SENSOR
   void set_defrost_sensor(binary_sensor::BinarySensor *sensor) { this->defrost_sensor_ = sensor; }
+  void set_compressor_status_sensor(binary_sensor::BinarySensor *binary_sensor) { this->compressor_status_sensor_ = binary_sensor; }
+  void set_outdoor_fan_status_sensor(binary_sensor::BinarySensor *binary_sensor) { this->outdoor_fan_status_sensor_ = binary_sensor; }
 #endif
 #ifdef USE_TEXT_SENSOR
   void set_fan_speed_sensor(text_sensor::TextSensor *sensor) { this->fan_speed_sensor_ = sensor; }
 #endif
   void set_humidity_setpoint_sensor(Sensor *sensor) { this->humidity_sensor_ = sensor; }
   void set_power_sensor(Sensor *sensor) { this->power_sensor_ = sensor; }
-  void set_compressor_status_sensor(BinarySensor *binary_sensor) { this->compressor_status_sensor_ = binary_sensor; }
-  void set_outdoor_fan_status_sensor(BinarySensor *binary_sensor) { this->outdoor_fan_status_sensor_ = binary_sensor; }
+
   void set_use_fahrenheit(bool yesno) { this->use_fahrenheit_ = yesno; }
 #ifdef USE_SWITCH
   void set_use_fahrenheit_switch(switch_::Switch *sw) { this->use_fahrenheit_switch_ = sw; }
@@ -283,14 +286,15 @@ class AirConditioner : public PollingComponent, public climate::Climate, public 
   Sensor *protect_flags_sensor_{nullptr};
 #ifdef USE_BINARY_SENSOR
   binary_sensor::BinarySensor *defrost_sensor_{nullptr};
+  binary_sensor::BinarySensor *compressor_status_sensor_{nullptr};
+  binary_sensor::BinarySensor *outdoor_fan_status_sensor_{nullptr};
 #endif
 #ifdef USE_TEXT_SENSOR
   text_sensor::TextSensor *fan_speed_sensor_{nullptr};
 #endif
   Sensor *humidity_sensor_{nullptr};
   Sensor *power_sensor_{nullptr};
-  BinarySensor *compressor_status_sensor_{nullptr};
-  BinarySensor *outdoor_fan_status_sensor_{nullptr};
+
   StaticPressureNumber *static_pressure_number_{nullptr};
   ClimateMode last_on_mode_;
 

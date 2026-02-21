@@ -61,9 +61,9 @@ void AirConditioner::control(const ClimateCall &call) {
   this->publish_state();
 
   if (controlState != STATE_WAIT_DATA) {
-    controlState = STATE_SEND_C3;
+    command_queue_.push(STATE_SEND_C3);
   } else {
-    queuedCommand = STATE_SEND_C3;
+    controlState = STATE_SEND_C3;
   }
 }
 
@@ -73,6 +73,7 @@ void AirConditioner::setup() {
   controlState = STATE_SEND_C0;
   ForceReadNextCycle = 1;
   followMeInit = false;
+  this->confirmed_off_ = false;  // Wait for first C0 to confirm state
 
   // Start up in Auto fan mode (since unit doesn't report it correctly)
   this->fan_mode = ClimateFanMode::CLIMATE_FAN_AUTO;
@@ -257,12 +258,12 @@ void AirConditioner::update() {
     }
     case STATE_SEND_C6_FOLLOW_ME: {
       prepareTXData(0xC6);
-      if (followMeInit) {
-        TXData[10] = 2;
-      } else {
-        TXData[10] = 6;
+      uint8_t follow_me_flags = 2; // Follow-me bit
+      if (!followMeInit || queued_follow_me_beeper_) {
+        follow_me_flags |= 4; // Beeper bit/Init bit
         followMeInit = true;
       }
+      TXData[10] = follow_me_flags;
       lastFollowMeTemperature = queued_follow_me_temperature_;
       TXData[11] = lastFollowMeTemperature;
       TXData[14] = CalculateCRC(TXData, TX_LEN);
@@ -480,7 +481,7 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
         bool need_publish = false;
         set_sensor(this->outdoor_sensor_, CalculateTemp(RXData[21]));
         set_number(this->static_pressure_number_, 0x0F & RXData[24]);
-        if (mode != ClimateMode::CLIMATE_MODE_OFF ||
+        if (this->mode != ClimateMode::CLIMATE_MODE_OFF ||
             ForceReadNextCycle == 1)  // Don't update below states unless mode is an ON state
         {
           if (this->use_fahrenheit_) {
