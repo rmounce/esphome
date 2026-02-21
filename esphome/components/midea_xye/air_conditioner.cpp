@@ -47,6 +47,7 @@ template<typename T> void update_property(T &property, const T &value, bool &fla
 void AirConditioner::control(const ClimateCall &call) {
   if (call.get_mode().has_value()) {
     this->mode = call.get_mode().value();
+    this->confirmed_off_ = false;
     followMeInit = false;
   }
   if (call.get_target_temperature().has_value())
@@ -90,6 +91,7 @@ void AirConditioner::setPowerState(bool state) {
   else
     this->mode = ClimateMode::CLIMATE_MODE_OFF;
 
+  this->confirmed_off_ = false;
   if (controlState != STATE_WAIT_DATA) {
     command_queue_.push(STATE_SEND_C3);
   } else {
@@ -362,6 +364,7 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
         bool need_publish = false;
 
         update_property(this->mode, mode, need_publish);
+        this->confirmed_off_ = (mode == ClimateMode::CLIMATE_MODE_OFF);
         if (mode != ClimateMode::CLIMATE_MODE_OFF)  // Don't update below states
                                                     // unless mode is an ON state
         {
@@ -647,26 +650,24 @@ void AirConditioner::set_static_pressure(uint8_t static_pressure) {
     ESP_LOGW(Constants::TAG, "Cannot set static pressure %d > 15", static_pressure);
     return;
   }
-  if (this->mode != ClimateMode::CLIMATE_MODE_OFF) {
-    ESP_LOGW(Constants::TAG, "Cannot set static pressure while unit is running");
+  // Reject unless AC has positively confirmed it is off via a C0 response
+  if (!confirmed_off_) {
+    ESP_LOGW(Constants::TAG, "Cannot set static pressure: AC has not confirmed off state");
     return;
   }
+  // Also reject if there are pending commands that could change state
+  if (!command_queue_.empty()) {
+    ESP_LOGW(Constants::TAG, "Cannot set static pressure: commands pending in queue");
+    return;
+  }
+
   prepareTXData(0xC6);
   TXData[8] = 0x10 | (static_pressure & 0x0F);
   TXData[10] = 4;
   TXData[11] = lastFollowMeTemperature;
   TXData[14] = CalculateCRC(TXData, TX_LEN);
-  if (this->mode == ClimateMode::CLIMATE_MODE_OFF) {
-    if (controlState != STATE_WAIT_DATA) {
-      command_queue_.push(STATE_SEND_C6);
-      ESP_LOGI(Constants::TAG, "Command pending. Queued setting static pressure to %d", static_pressure);
-    } else {
-      sendRecv(0xC6);
-      ESP_LOGI(Constants::TAG, "Set static pressure to %d", static_pressure);
-    }
-  } else {
-    ESP_LOGW(Constants::TAG, "Cannot set static pressure while unit is running");
-  }
+  sendRecv(0xC6);
+  ESP_LOGI(Constants::TAG, "Set static pressure to %d", static_pressure);
 }
 
 void AirConditioner::do_swing_step() {
