@@ -44,6 +44,7 @@
 #define FROM_CLIENT 0x00
 
 #define OP_MODE_OFF 0x00
+#define OP_MODE_POWER_ON 0x10
 #define OP_MODE_AUTO 0x80
 #define OP_MODE_FAN 0x81
 #define OP_MODE_DRY 0x82

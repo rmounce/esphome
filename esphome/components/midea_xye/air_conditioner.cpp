@@ -60,7 +60,7 @@ void AirConditioner::control(const ClimateCall &call) {
     this->preset = call.get_preset().value();
   this->publish_state();
 
-  if (controlState != STATE_WAIT_DATA) {
+  if (controlState == STATE_WAIT_DATA) {
     command_queue_.push(STATE_SEND_C3);
   } else {
     controlState = STATE_SEND_C3;
@@ -374,14 +374,32 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
         else if (RXData[RX_C0_BYTE_MODE_FLAGS] & MODE_FLAG_ECO)
           preset = ClimatePreset::CLIMATE_PRESET_SLEEP;
 
+        bool pending_c3 = (controlState == STATE_SEND_C3);
+        if (!pending_c3) {
+          // Check if C3 is in the queue
+          std::queue<uint8_t> temp_queue = command_queue_;
+          while (!temp_queue.empty()) {
+            if (temp_queue.front() == STATE_SEND_C3) {
+              pending_c3 = true;
+              break;
+            }
+            temp_queue.pop();
+          }
+        }
+
         bool need_publish = false;
 
-        update_property(this->mode, mode, need_publish);
+        if (!pending_c3) {
+          update_property(this->mode, mode, need_publish);
+        }
         this->confirmed_off_ = (mode == ClimateMode::CLIMATE_MODE_OFF);
         if (mode != ClimateMode::CLIMATE_MODE_OFF)  // Don't update below states
-                                                    // unless mode is an ON state
         {
-          this->last_on_mode_ = mode;
+          update_property(this->fan_mode, fan_mode, need_publish);
+          update_property(this->preset, preset, need_publish);
+          if (!pending_c3) {
+            update_property(this->target_temperature, target_temperature, need_publish);
+          }
         }
 
         if (mode != ClimateMode::CLIMATE_MODE_OFF ||
