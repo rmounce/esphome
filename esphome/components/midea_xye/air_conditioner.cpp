@@ -93,7 +93,7 @@ void AirConditioner::setPowerState(bool state) {
     this->mode = ClimateMode::CLIMATE_MODE_OFF;
 
   this->confirmed_off_ = false;
-  if (controlState != STATE_WAIT_DATA) {
+  if (controlState == STATE_WAIT_DATA) {
     command_queue_.push(STATE_SEND_C3);
   } else {
     controlState = STATE_SEND_C3;
@@ -390,13 +390,22 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
         bool need_publish = false;
 
         if (!pending_c3) {
-          update_property(this->mode, mode, need_publish);
+          if (this->mode != mode) {
+            this->mode = mode;
+            need_publish = true;
+          }
         }
         this->confirmed_off_ = (mode == ClimateMode::CLIMATE_MODE_OFF);
         if (mode != ClimateMode::CLIMATE_MODE_OFF)  // Don't update below states
         {
-          update_property(this->fan_mode, fan_mode, need_publish);
-          update_property(this->preset, preset, need_publish);
+          if (this->fan_mode != fan_mode) {
+            this->fan_mode = fan_mode;
+            need_publish = true;
+          }
+          if (this->preset != preset) {
+            this->preset = preset;
+            need_publish = true;
+          }
           if (!pending_c3) {
             update_property(this->target_temperature, target_temperature, need_publish);
           }
