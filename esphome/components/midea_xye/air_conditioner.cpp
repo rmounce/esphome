@@ -651,8 +651,13 @@ void AirConditioner::set_static_pressure(uint8_t static_pressure) {
   TXData[11] = lastFollowMeTemperature;
   TXData[14] = CalculateCRC(TXData, TX_LEN);
   if (this->mode == ClimateMode::CLIMATE_MODE_OFF) {
-    sendRecv(0xC6);
-    ESP_LOGI(Constants::TAG, "Set static pressure to %d", static_pressure);
+    if (controlState != STATE_WAIT_DATA) {
+      queuedCommand = STATE_SEND_C6;
+      ESP_LOGI(Constants::TAG, "Command pending. Queued setting static pressure to %d", static_pressure);
+    } else {
+      sendRecv(0xC6);
+      ESP_LOGI(Constants::TAG, "Set static pressure to %d", static_pressure);
+    }
   } else {
     ESP_LOGW(Constants::TAG, "Cannot set static pressure while unit is running");
   }
