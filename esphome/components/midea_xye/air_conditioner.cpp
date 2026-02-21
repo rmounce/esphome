@@ -91,9 +91,9 @@ void AirConditioner::setPowerState(bool state) {
     this->mode = ClimateMode::CLIMATE_MODE_OFF;
 
   if (controlState != STATE_WAIT_DATA) {
-    controlState = STATE_SEND_C3;
+    command_queue_.push(STATE_SEND_C3);
   } else {
-    queuedCommand = STATE_SEND_C3;
+    controlState = STATE_SEND_C3;
   }
 }
 
@@ -210,9 +210,9 @@ void AirConditioner::sendRecv(uint8_t cmdSent) {
       if (cmdSent != 0xC3) {
         ParseResponse(cmdSent);
       }
-      if (queuedCommand != 0) {
-        controlState = queuedCommand;
-        queuedCommand = 0;
+      if (!command_queue_.empty()) {
+        controlState = command_queue_.front();
+        command_queue_.pop();
       } else {
         switch (cmdSent) {
           case 0xC0:
@@ -232,7 +232,8 @@ void AirConditioner::sendRecv(uint8_t cmdSent) {
     } else {
       ESP_LOGE(Constants::TAG, "Received incorrect message length from AC for Command %02X (Expected %d, got %d)", cmdSent, RX_LEN, i);
       controlState = STATE_SEND_C0;
-      queuedCommand = 0;
+      // Clear out the queue on error to prevent cascading failure
+      while(!command_queue_.empty()) command_queue_.pop();
     }
   });
 }
@@ -631,7 +632,7 @@ void AirConditioner::do_follow_me(float temperature, bool beeper) {
   // Wired controller does not send 0xC6 when off.
   if (this->mode != ClimateMode::CLIMATE_MODE_OFF) {
     if (controlState != STATE_WAIT_DATA) {
-      queuedCommand = STATE_SEND_C6;
+      command_queue_.push(STATE_SEND_C6);
       ESP_LOGI(Constants::TAG, "Command pending. Queued Follow-Me data.");
     } else {
       sendRecv(0xC6);
@@ -657,7 +658,7 @@ void AirConditioner::set_static_pressure(uint8_t static_pressure) {
   TXData[14] = CalculateCRC(TXData, TX_LEN);
   if (this->mode == ClimateMode::CLIMATE_MODE_OFF) {
     if (controlState != STATE_WAIT_DATA) {
-      queuedCommand = STATE_SEND_C6;
+      command_queue_.push(STATE_SEND_C6);
       ESP_LOGI(Constants::TAG, "Command pending. Queued setting static pressure to %d", static_pressure);
     } else {
       sendRecv(0xC6);

@@ -21,6 +21,7 @@
 #include "esphome/core/log.h"
 #include "ir_transmitter.h"
 #include "static_pressure_number.h"
+#include <queue>
 
 // STATES
 #define STATE_WAIT_DATA 0
@@ -244,7 +245,7 @@ class AirConditioner : public PollingComponent, public climate::Climate, public 
  private:
   uint8_t controlState;
   uint8_t ForceReadNextCycle;
-  uint8_t queuedCommand;
+  std::queue<uint8_t> command_queue_;
   uint32_t response_timeout;
   bool followMeInit;
   uint8_t lastFollowMeTemperature;
