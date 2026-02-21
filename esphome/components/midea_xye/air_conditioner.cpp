@@ -60,10 +60,11 @@ void AirConditioner::control(const ClimateCall &call) {
     this->preset = call.get_preset().value();
   this->publish_state();
 
-  if (controlState == STATE_WAIT_DATA) {
-    command_queue_.push(STATE_SEND_C3);
-  } else {
+  // Only interrupt routine polling. Queue everything else.
+  if (controlState == STATE_SEND_C0 || controlState == STATE_SEND_C4) {
     controlState = STATE_SEND_C3;
+  } else {
+    command_queue_.push(STATE_SEND_C3);
   }
 }
 
@@ -77,6 +78,7 @@ void AirConditioner::setup() {
 
   // Start up in Auto fan mode (since unit doesn't report it correctly)
   this->fan_mode = ClimateFanMode::CLIMATE_FAN_AUTO;
+  this->lastFollowMeTemperature = 25; // Default safe value
 
 #ifdef USE_SWITCH
   if (this->use_fahrenheit_switch_ != nullptr) {
@@ -93,10 +95,10 @@ void AirConditioner::setPowerState(bool state) {
     this->mode = ClimateMode::CLIMATE_MODE_OFF;
 
   this->confirmed_off_ = false;
-  if (controlState == STATE_WAIT_DATA) {
-    command_queue_.push(STATE_SEND_C3);
-  } else {
+  if (controlState == STATE_SEND_C0 || controlState == STATE_SEND_C4) {
     controlState = STATE_SEND_C3;
+  } else {
+    command_queue_.push(STATE_SEND_C3);
   }
 }
 
@@ -664,11 +666,11 @@ void AirConditioner::do_follow_me(float temperature, bool beeper) {
   queued_follow_me_temperature_ = static_cast<uint8_t>(lroundf(temperature));
   queued_follow_me_beeper_ = beeper;
   if (this->mode != ClimateMode::CLIMATE_MODE_OFF) {
-    if (controlState != STATE_WAIT_DATA) {
+    if (controlState == STATE_SEND_C0 || controlState == STATE_SEND_C4) {
+      controlState = STATE_SEND_C6_FOLLOW_ME;
+    } else {
       command_queue_.push(STATE_SEND_C6_FOLLOW_ME);
       ESP_LOGI(Constants::TAG, "Command pending. Queued Follow-Me data.");
-    } else {
-      controlState = STATE_SEND_C6_FOLLOW_ME;
     }
   }
 #endif
@@ -686,11 +688,11 @@ void AirConditioner::set_static_pressure(uint8_t static_pressure) {
   }
 
   queued_static_pressure_ = static_pressure;
-  if (controlState != STATE_WAIT_DATA) {
+  if (controlState == STATE_SEND_C0 || controlState == STATE_SEND_C4) {
+    controlState = STATE_SEND_C6_PRESSURE;
+  } else {
     command_queue_.push(STATE_SEND_C6_PRESSURE);
     ESP_LOGI(Constants::TAG, "Command pending. Queued setting static pressure to %d", static_pressure);
-  } else {
-    controlState = STATE_SEND_C6_PRESSURE;
   }
 }
 
