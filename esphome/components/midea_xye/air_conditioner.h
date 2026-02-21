@@ -26,7 +26,8 @@
 // STATES
 #define STATE_WAIT_DATA 0
 #define STATE_SEND_C3 1
-#define STATE_SEND_C6 2
+#define STATE_SEND_C6_FOLLOW_ME 2
+#define STATE_SEND_C6_PRESSURE 5
 #define STATE_SEND_C0 3
 #define STATE_SEND_C4 4
 
@@ -250,6 +251,9 @@ class AirConditioner : public PollingComponent, public climate::Climate, public 
   bool followMeInit;
   uint8_t lastFollowMeTemperature;
   bool confirmed_off_{false};
+  uint8_t queued_follow_me_temperature_;
+  bool queued_follow_me_beeper_{false};
+  uint8_t queued_static_pressure_{0};
 
  protected:
   uart::UARTComponent *uart_;
