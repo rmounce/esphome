@@ -506,6 +506,7 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
 #endif
         break;
       }
+      case 0xC6:
       case 0xC4:
         bool need_publish = false;
         set_sensor(this->outdoor_sensor_, CalculateTemp(RXData[21]));
@@ -527,7 +528,7 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
             RXData[22] != 0x00 || RXData[23] != 0x00 || RXData[24] != 0xFF || RXData[25] != 0x00 ||
             RXData[26] != 0x80 || RXData[27] != 0x80 || RXData[28] != 0x80 || RXData[29] != 0x80) {
           ESP_LOGI(Constants::TAG,
-                   "DEBUG C4: "
+                   "DEBUG C4/C6: "
                    "%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%"
                    "02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:"
                    "%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X",
