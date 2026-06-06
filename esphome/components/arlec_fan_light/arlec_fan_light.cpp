@@ -94,14 +94,20 @@ light::LightTraits ArlecFanLight::get_traits() {
 }
 
 void ArlecFanLight::write_state(light::LightState *state) {
+  if (state->is_transformer_active()) {
+    return;
+  }
+
   float color_temperature;
   float brightness;
   state->current_values_as_ct(&color_temperature, &brightness);
 
   if (!state->current_values.is_on() && this->switch_id_.has_value()) {
-    this->arm_switch_echo_(false);
-    this->raw_switch_ = 0;
-    this->parent_->set_boolean_datapoint_value(*this->switch_id_, false);
+    if (this->raw_switch_ != 0) {
+      this->arm_switch_echo_(false);
+      this->raw_switch_ = 0;
+      this->parent_->set_boolean_datapoint_value(*this->switch_id_, false);
+    }
     return;
   }
 
@@ -111,15 +117,19 @@ void ArlecFanLight::write_state(light::LightState *state) {
 
   this->arm_integer_echo_(raw_color_temperature, this->raw_color_temperature_, &this->command_color_temperature_,
                           &this->command_color_temperature_at_);
-  this->raw_color_temperature_ = raw_color_temperature;
-  this->parent_->set_integer_datapoint_value(this->color_temperature_id_, raw_color_temperature);
+  if (this->raw_color_temperature_ != raw_color_temperature) {
+    this->raw_color_temperature_ = raw_color_temperature;
+    this->parent_->set_integer_datapoint_value(this->color_temperature_id_, raw_color_temperature);
+  }
 
   this->arm_integer_echo_(raw_brightness, this->raw_brightness_, &this->command_brightness_,
                           &this->command_brightness_at_);
-  this->raw_brightness_ = raw_brightness;
-  this->parent_->set_integer_datapoint_value(this->dimmer_id_, raw_brightness);
+  if (this->raw_brightness_ != raw_brightness) {
+    this->raw_brightness_ = raw_brightness;
+    this->parent_->set_integer_datapoint_value(this->dimmer_id_, raw_brightness);
+  }
 
-  if (this->switch_id_.has_value()) {
+  if (this->switch_id_.has_value() && this->raw_switch_ != 1) {
     this->arm_switch_echo_(true);
     this->raw_switch_ = 1;
     this->parent_->set_boolean_datapoint_value(*this->switch_id_, true);
@@ -259,7 +269,7 @@ void ArlecFanLight::arm_switch_echo_(bool value) {
 }
 
 bool ArlecFanLight::light_is_transitioning_() const {
-  return this->state_ != nullptr && this->state_->current_values != this->state_->remote_values;
+  return this->state_ != nullptr && this->state_->is_transformer_active();
 }
 
 }  // namespace arlec_fan_light
