@@ -1,0 +1,18 @@
+tuya:
+  id: tuya_parent
+
+light:
+  - platform: arlec_fan_light
+    id: arlec_fan_light_1
+    name: Arlec Fan Light
+    tuya_id: tuya_parent
+    switch_datapoint: 9
+    dimmer_datapoint: 10
+    min_value: 2
+    max_value: 100
+    color_temperature_datapoint: 11
+    color_temperature_max_value: 100
+    cold_white_color_temperature: 175 mireds
+    warm_white_color_temperature: 333 mireds
+    echo_suppress_duration: 1s
+    pair_timeout: 200ms
