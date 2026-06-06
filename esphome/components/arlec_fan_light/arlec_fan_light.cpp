@@ -14,6 +14,8 @@ static const char *const TAG = "arlec_fan_light";
 
 static float clamp01(float value) { return clamp(value, 0.0f, 1.0f); }
 
+static bool nearly_equal(float a, float b, float tolerance) { return std::abs(a - b) <= tolerance; }
+
 static uint32_t round_up_to_even(uint32_t value, uint32_t max_value) {
   value += value % 2;
   return std::min(value, max_value);
@@ -203,12 +205,17 @@ void ArlecFanLight::publish_from_datapoints_() {
 
   auto call = this->state_->make_call();
   bool has_value = false;
+  bool changed = false;
 
   if (this->raw_switch_ != SWITCH_UNKNOWN) {
-    call.set_state(this->raw_switch_ != 0);
+    const bool is_on = this->raw_switch_ != 0;
+    call.set_state(is_on);
     has_value = true;
+    changed |= this->state_->remote_values.is_on() != is_on;
     if (this->raw_switch_ == 0) {
-      call.perform();
+      if (changed) {
+        call.perform();
+      }
       return;
     }
   }
@@ -217,13 +224,18 @@ void ArlecFanLight::publish_from_datapoints_() {
     float color_temperature;
     float brightness;
     this->decode_state_(this->raw_color_temperature_, this->raw_brightness_, &color_temperature, &brightness);
-    call.set_color_temperature(this->cold_white_temperature_ +
-                               ((this->warm_white_temperature_ - this->cold_white_temperature_) * color_temperature));
+    const float color_temperature_mireds =
+        this->cold_white_temperature_ + ((this->warm_white_temperature_ - this->cold_white_temperature_) *
+                                         color_temperature);
+    call.set_color_temperature(color_temperature_mireds);
     call.set_brightness(brightness);
     has_value = true;
+    changed |= this->state_->remote_values.get_color_mode() != light::ColorMode::COLOR_TEMPERATURE;
+    changed |= !nearly_equal(this->state_->remote_values.get_brightness(), brightness, 0.01f);
+    changed |= !nearly_equal(this->state_->remote_values.get_color_temperature(), color_temperature_mireds, 2.0f);
   }
 
-  if (has_value) {
+  if (has_value && changed) {
     call.perform();
   }
 }
