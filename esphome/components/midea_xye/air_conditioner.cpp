@@ -52,8 +52,21 @@ void AirConditioner::control(const ClimateCall &call) {
   }
   if (call.get_target_temperature().has_value())
     this->target_temperature = call.get_target_temperature().value();
-  if (call.get_fan_mode().has_value())
-    this->fan_mode = call.get_fan_mode().value();
+  if (call.get_fan_mode().has_value()) {
+    switch (call.get_fan_mode().value()) {
+      case ClimateFanMode::CLIMATE_FAN_LOW:
+      case ClimateFanMode::CLIMATE_FAN_MEDIUM:
+      case ClimateFanMode::CLIMATE_FAN_HIGH:
+        this->requested_fan_mode_ = call.get_fan_mode().value();
+        break;
+      default:
+        this->requested_fan_mode_ = ClimateFanMode::CLIMATE_FAN_AUTO;
+    }
+  }
+  // Protocol full-auto cannot accept a manual fan request.
+  if (this->mode == ClimateMode::CLIMATE_MODE_HEAT_COOL)
+    this->requested_fan_mode_ = ClimateFanMode::CLIMATE_FAN_AUTO;
+  this->fan_mode = this->requested_fan_mode_;
   if (call.get_swing_mode().has_value())
     this->swing_mode = call.get_swing_mode().value();
   if (call.get_preset().has_value())
@@ -76,8 +89,9 @@ void AirConditioner::setup() {
   followMeInit = false;
   this->confirmed_off_ = false;  // Wait for first C0 to confirm state
 
-  // Start up in Auto fan mode (since unit doesn't report it correctly)
-  this->fan_mode = ClimateFanMode::CLIMATE_FAN_AUTO;
+  // A deterministic request default, not a claim about the observed fan.
+  // No C3 is queued just to initialize monitoring.
+  this->fan_mode = this->requested_fan_mode_;
   this->lastFollowMeTemperature = 25; // Default safe value
 
 #ifdef USE_SWITCH
@@ -93,6 +107,11 @@ void AirConditioner::setPowerState(bool state) {
     this->mode = this->last_on_mode_;
   else
     this->mode = ClimateMode::CLIMATE_MODE_OFF;
+
+  if (this->mode == ClimateMode::CLIMATE_MODE_HEAT_COOL) {
+    this->requested_fan_mode_ = ClimateFanMode::CLIMATE_FAN_AUTO;
+    this->fan_mode = this->requested_fan_mode_;
+  }
 
   this->confirmed_off_ = false;
   if (controlState == STATE_SEND_C0 || controlState == STATE_SEND_C4) {
@@ -150,7 +169,7 @@ void AirConditioner::setACParams() {
   }
   // set fan mode
   if (this->mode != ClimateMode::CLIMATE_MODE_HEAT_COOL) {
-    switch (this->fan_mode.value()) {
+    switch (this->requested_fan_mode_) {
       case ClimateFanMode::CLIMATE_FAN_AUTO:
         TXData[7] = FAN_MODE_AUTO;
         break;
@@ -168,7 +187,6 @@ void AirConditioner::setACParams() {
     }
   } else {
     // Auto is full-auto - can't set fan mode either.
-    this->fan_mode = ClimateFanMode::CLIMATE_FAN_AUTO;
     TXData[7] = FAN_MODE_AUTO;
   }
   // set temp
@@ -199,6 +217,11 @@ void AirConditioner::sendRecv(uint8_t cmdSent) {
   // TODO: Reimplement flow control for manual RS485 flow control chips
   // digitalWrite(ComControlPin, RS485_TX_PIN_VALUE);
   this->uart_->write_array(TXData, TX_LEN);
+  if (cmdSent == CLIENT_COMMAND_SET) {
+    // Record the actual UART command, not a queued or merely constructed byte.
+    set_sensor(this->fan_command_sensor_, TXData[7]);
+    ESP_LOGD(Constants::TAG, "C3 fan command byte: 0x%02X", TXData[7]);
+  }
   this->uart_->flush();
   controlState = STATE_WAIT_DATA;
   // Delay the remaining for 100 ms to allow response from the AC unit.
@@ -313,6 +336,18 @@ uint8_t AirConditioner::CalculateCRC(uint8_t *data, uint8_t len) {
   return 0xFF - (crc & 0xFF);
 }
 
+bool AirConditioner::has_pending_c3_() const {
+  if (this->controlState == STATE_SEND_C3)
+    return true;
+  auto queue = this->command_queue_;
+  while (!queue.empty()) {
+    if (queue.front() == STATE_SEND_C3)
+      return true;
+    queue.pop();
+  }
+  return false;
+}
+
 void AirConditioner::ParseResponse(uint8_t cmdSent) {
   // validate the response
   if ((RXData[RX_BYTE_PREAMBLE] == PREAMBLE) && (RXData[RX_BYTE_PROLOGUE] == PROLOGUE) &&
@@ -320,7 +355,6 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
     switch (RXData[RX_BYTE_COMMAND_TYPE]) {
       case CLIENT_COMMAND_QUERY: {
         ClimateMode mode = ClimateMode::CLIMATE_MODE_OFF;
-        ClimateFanMode fan_mode = ClimateFanMode::CLIMATE_FAN_AUTO;
         ClimatePreset preset = ClimatePreset::CLIMATE_PRESET_NONE;
 
         switch (RXData[RX_C0_BYTE_OP_MODE] & 0xEF) {
@@ -353,41 +387,19 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
         }
 
         uint8_t current_fan_speed = RXData[RX_C0_BYTE_FAN_MODE] & 0x0F;
-        switch (current_fan_speed) {
-          case FAN_MODE_HIGH:
-            fan_mode = ClimateFanMode::CLIMATE_FAN_HIGH;
-            break;
-          case FAN_MODE_MEDIUM:
-            fan_mode = ClimateFanMode::CLIMATE_FAN_MEDIUM;
-            break;
-          case FAN_MODE_LOW:
-            fan_mode = ClimateFanMode::CLIMATE_FAN_LOW;
-            break;
-          case FAN_MODE_OFF:
-            fan_mode = ClimateFanMode::CLIMATE_FAN_OFF;
-            break;
+        const uint8_t fan_feedback = RXData[RX_C0_BYTE_FAN_MODE];
+        if (!this->last_fan_feedback_.has_value() || *this->last_fan_feedback_ != fan_feedback) {
+          ESP_LOGD(Constants::TAG, "C0 fan feedback byte: 0x%02X", fan_feedback);
+          this->last_fan_feedback_ = fan_feedback;
         }
-        if ((RXData[RX_C0_BYTE_FAN_MODE] & FAN_MODE_AUTO) == FAN_MODE_AUTO) {
-          fan_mode = ClimateFanMode::CLIMATE_FAN_AUTO;
-        }
+        set_sensor(this->fan_feedback_sensor_, fan_feedback);
 
         if (RXData[RX_C0_BYTE_MODE_FLAGS] & MODE_FLAG_AUX_HEAT)
           preset = ClimatePreset::CLIMATE_PRESET_BOOST;
         else if (RXData[RX_C0_BYTE_MODE_FLAGS] & MODE_FLAG_ECO)
           preset = ClimatePreset::CLIMATE_PRESET_SLEEP;
 
-        bool pending_c3 = (controlState == STATE_SEND_C3);
-        if (!pending_c3) {
-          // Check if C3 is in the queue
-          std::queue<uint8_t> temp_queue = command_queue_;
-          while (!temp_queue.empty()) {
-            if (temp_queue.front() == STATE_SEND_C3) {
-              pending_c3 = true;
-              break;
-            }
-            temp_queue.pop();
-          }
-        }
+        const bool pending_c3 = this->has_pending_c3_();
 
         bool need_publish = false;
 
@@ -400,29 +412,25 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
         this->confirmed_off_ = (mode == ClimateMode::CLIMATE_MODE_OFF);
         if (mode != ClimateMode::CLIMATE_MODE_OFF)  // Don't update below states
         {
-          if (this->fan_mode != fan_mode) {
-            this->fan_mode = fan_mode;
-            need_publish = true;
-          }
-          if (this->preset != preset) {
+          if (!pending_c3 && this->preset != preset) {
             this->preset = preset;
             need_publish = true;
           }
-          if (!pending_c3) {
-            update_property(this->target_temperature, target_temperature, need_publish);
-          }
+        }
+        if (!pending_c3 && mode == ClimateMode::CLIMATE_MODE_HEAT_COOL) {
+          this->requested_fan_mode_ = ClimateFanMode::CLIMATE_FAN_AUTO;
+          update_property(this->fan_mode, optional<ClimateFanMode>(this->requested_fan_mode_), need_publish);
         }
 
         if (mode != ClimateMode::CLIMATE_MODE_OFF ||
             ForceReadNextCycle == 1)  // Don't update below states unless mode is an ON state
         {
-          // Don't update the fan mode. Assume it set correctly.
-          // Show Heating vs Heat at least in Heat mode. Will figure
-          // out how to determine if compressor is on in other modes later.
+          // Keep the historical action derivation from the fan low nibble.
+          // These labels are not independent compressor/motion evidence.
 
           // If we are using C, update the temperature here. Mask out 0x40. If we are using F, update
           // via 0xC4.
-          if (!this->use_fahrenheit_) {
+          if (!this->use_fahrenheit_ && !pending_c3) {
             update_property(this->target_temperature, (float) (RXData[RX_C0_BYTE_SET_TEMP] & 0xBF), need_publish);
           }
           update_property(this->current_temperature, CalculateTemp(RXData[RX_C0_BYTE_T1_TEMP]), need_publish);
@@ -451,15 +459,17 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
             need_publish = true;
           }
 
-          if ((this->swing_mode != ClimateSwingMode::CLIMATE_SWING_OFF) !=
-              (bool) (RXData[RX_C0_BYTE_MODE_FLAGS] & MODE_FLAG_SWING))
-            need_publish = true;
-          this->swing_mode = (RXData[RX_C0_BYTE_MODE_FLAGS] & MODE_FLAG_SWING)
-                                 ? ClimateSwingMode::CLIMATE_SWING_VERTICAL
-                                 : ClimateSwingMode::CLIMATE_SWING_OFF;
-          if (this->preset != preset)
-            need_publish = true;
-          this->preset = preset;
+          if (!pending_c3) {
+            if ((this->swing_mode != ClimateSwingMode::CLIMATE_SWING_OFF) !=
+                (bool) (RXData[RX_C0_BYTE_MODE_FLAGS] & MODE_FLAG_SWING))
+              need_publish = true;
+            this->swing_mode = (RXData[RX_C0_BYTE_MODE_FLAGS] & MODE_FLAG_SWING)
+                                   ? ClimateSwingMode::CLIMATE_SWING_VERTICAL
+                                   : ClimateSwingMode::CLIMATE_SWING_OFF;
+            if (this->preset != preset)
+              need_publish = true;
+            this->preset = preset;
+          }
         } else if ((this->action != climate::CLIMATE_ACTION_IDLE) && (RXData[9] & 0x0F) == 0x00) {
           this->action = climate::CLIMATE_ACTION_IDLE;
           need_publish = true;
@@ -485,7 +495,7 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
 #endif
         set_sensor(this->protect_flags_sensor_, protect_flags);
 #ifdef USE_TEXT_SENSOR
-        // Fan speed as text for Home Assistant: Off, Low, Medium, High
+        // Legacy low-nibble labels only; "Off" is a code, not proof of no motion.
         const char *fan_speed_text = "Off";
         switch (current_fan_speed) {
           case FAN_MODE_LOW:
@@ -514,7 +524,7 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
         if (this->mode != ClimateMode::CLIMATE_MODE_OFF ||
             ForceReadNextCycle == 1)  // Don't update below states unless mode is an ON state
         {
-          if (this->use_fahrenheit_) {
+          if (this->use_fahrenheit_ && !this->has_pending_c3_()) {
             float incoming_target_temp = 0.0;
             incoming_target_temp = (float) (((RXData[RX_C4_BYTE_SET_TEMP] - 0x87) - 32.0) * 5.0 / 9.0);
             if (incoming_target_temp != this->target_temperature) {
@@ -633,7 +643,6 @@ climate::ClimateTraits AirConditioner::traits() {
   traits.add_supported_fan_mode(ClimateFanMode::CLIMATE_FAN_LOW);
   traits.add_supported_fan_mode(ClimateFanMode::CLIMATE_FAN_MEDIUM);
   traits.add_supported_fan_mode(ClimateFanMode::CLIMATE_FAN_HIGH);
-  traits.add_supported_fan_mode(ClimateFanMode::CLIMATE_FAN_OFF);  // Can't set it but will be reported
 
   if (!traits.get_supported_modes().empty())
     traits.add_supported_mode(ClimateMode::CLIMATE_MODE_OFF);

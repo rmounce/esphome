@@ -206,6 +206,8 @@ class AirConditioner : public PollingComponent, public climate::Climate, public 
 #ifdef USE_TEXT_SENSOR
   void set_fan_speed_sensor(text_sensor::TextSensor *sensor) { this->fan_speed_sensor_ = sensor; }
 #endif
+  void set_fan_feedback_sensor(Sensor *sensor) { this->fan_feedback_sensor_ = sensor; }
+  void set_fan_command_sensor(Sensor *sensor) { this->fan_command_sensor_ = sensor; }
   void set_humidity_setpoint_sensor(Sensor *sensor) { this->humidity_sensor_ = sensor; }
   void set_power_sensor(Sensor *sensor) { this->power_sensor_ = sensor; }
 
@@ -298,6 +300,13 @@ class AirConditioner : public PollingComponent, public climate::Climate, public 
 
   StaticPressureNumber *static_pressure_number_{nullptr};
   ClimateMode last_on_mode_;
+  // Command intent, never inferred from C0's observed speed code. Auto is the
+  // startup default; monitoring alone does not send a command.
+  ClimateFanMode requested_fan_mode_{ClimateFanMode::CLIMATE_FAN_AUTO};
+  Sensor *fan_feedback_sensor_{nullptr};
+  Sensor *fan_command_sensor_{nullptr};
+  optional<uint8_t> last_fan_feedback_{};
+  bool has_pending_c3_() const;
 
   static uint8_t CalculateCRC(uint8_t *Data, uint8_t len);
   void ParseResponse(uint8_t cmdSent);

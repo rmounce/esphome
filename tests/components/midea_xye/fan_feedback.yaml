@@ -1,0 +1,82 @@
+esphome:
+  name: xye-fan-feedback-test
+  on_boot:
+    priority: 200
+    then:
+      - lambda: |-
+          // The existing local-inhibit pattern hooks ClimateCall before control.
+          id(xye).add_on_control_callback([](climate::ClimateCall &x) {
+            if (!id(local_inhibit).state) return;
+            if (x.get_mode().has_value() && *x.get_mode() != climate::CLIMATE_MODE_OFF)
+              x.set_mode(optional<climate::ClimateMode>{});
+            x.set_target_temperature(optional<float>{});
+            x.set_target_temperature_low(optional<float>{});
+            x.set_target_temperature_high(optional<float>{});
+            x.set_target_humidity(optional<float>{});
+            x.set_fan_mode(optional<climate::ClimateFanMode>{});
+            x.set_swing_mode(optional<climate::ClimateSwingMode>{});
+            x.set_preset(optional<climate::ClimatePreset>{});
+          });
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: arduino
+
+logger:
+  level: DEBUG
+  baud_rate: 0
+
+wifi:
+  ssid: test-network
+  password: test-password
+
+uart:
+  id: xye_uart
+  tx_pin: GPIO6
+  rx_pin: GPIO5
+  baud_rate: 4800
+
+switch:
+  - platform: template
+    id: local_inhibit
+    optimistic: true
+  - platform: midea_xye
+    midea_ac_id: xye
+    use_fahrenheit:
+      name: Use Fahrenheit
+
+climate:
+  - platform: midea_xye
+    id: xye
+    name: XYE test
+    uart_id: xye_uart
+    supported_modes: [HEAT_COOL, HEAT, COOL, FAN_ONLY, DRY]
+    supported_presets: [BOOST, SLEEP]
+    supported_swing_modes: [VERTICAL]
+    fan_feedback:
+      name: C0 fan feedback byte
+    fan_command:
+      name: C3 fan command byte
+    fan_speed:
+      name: Legacy fan code label
+    temperature_1:
+      name: Return temperature
+    temperature_2a:
+      name: Coil temperature
+    temperature_2b:
+      name: Coil outlet temperature
+    outdoor_temperature:
+      name: Outdoor temperature
+    static_pressure:
+      name: Static pressure
+    protect_flags:
+      name: Protect flags
+    error_flags:
+      name: Error flags
+    defrost:
+      name: Defrost
+    compressor_status:
+      name: Compressor status
+    outdoor_fan_status:
+      name: Outdoor fan status

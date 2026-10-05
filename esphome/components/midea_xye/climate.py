@@ -64,6 +64,8 @@ CONF_DEFROST = "defrost"
 CONF_ERROR_FLAGS = "error_flags"
 CONF_PROTECT_FLAGS = "protect_flags"
 CONF_FAN_SPEED = "fan_speed"
+CONF_FAN_FEEDBACK = "fan_feedback"
+CONF_FAN_COMMAND = "fan_command"
 CONF_POWER_USAGE = "power_usage"
 CONF_HUMIDITY_SETPOINT = "humidity_setpoint"
 CONF_STATIC_PRESSURE = "static_pressure"
@@ -241,6 +243,16 @@ CONFIG_SCHEMA = cv.All(
                 icon=ICON_FAN,
             ),
 
+            cv.Optional(CONF_FAN_FEEDBACK): sensor.sensor_schema(
+                icon=ICON_FAN,
+                accuracy_decimals=0,
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+            ),
+            cv.Optional(CONF_FAN_COMMAND): sensor.sensor_schema(
+                icon=ICON_FAN,
+                accuracy_decimals=0,
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+            ),
             cv.Optional(CONF_POWER_USAGE): sensor.sensor_schema(
                 unit_of_measurement=UNIT_WATT,
                 icon=ICON_POWER,
@@ -439,6 +451,10 @@ async def to_code(config):
     if CONF_FAN_SPEED in config:
         sens = await text_sensor.new_text_sensor(config[CONF_FAN_SPEED])
         cg.add(var.set_fan_speed_sensor(sens))
+    for key in (CONF_FAN_FEEDBACK, CONF_FAN_COMMAND):
+        if key in config:
+            sens = await sensor.new_sensor(config[key])
+            cg.add(getattr(var, f"set_{key}_sensor")(sens))
     if CONF_POWER_USAGE in config:
         sens = await sensor.new_sensor(config[CONF_POWER_USAGE])
         cg.add(var.set_power_sensor(sens))

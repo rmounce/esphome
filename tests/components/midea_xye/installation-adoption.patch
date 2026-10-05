@@ -1,0 +1,42 @@
+--- a/aa-midea-xye-hvac.yaml
++++ b/aa-midea-xye-hvac.yaml
+@@ -2,8 +2,7 @@
+   - source:
+       type: git
+       url: https://github.com/rmounce/esphome
+-      ref: xye-units-switch
+-    refresh: 10s
++      ref: <REVIEWED_40_CHARACTER_COMMIT_SHA>
+     components: [midea_xye]
+
+ # Register the command gate directly. The current external component calls
+@@ -43,8 +42,6 @@
+   tx_pin: ${xye_uart_tx_pin}
+   rx_pin: ${xye_uart_rx_pin}
+   baud_rate: 4800
+-  debug:
+-    direction: BOTH
+
+ climate:
+   - platform: midea_xye
+@@ -56,6 +53,12 @@
+       min_temperature: 17 °C
+       max_temperature: 30 °C
+       temperature_step: 1.0 °C
++    fan_feedback:
++      id: xye_fan_feedback
++      name: "${friendly_name} C0 Fan Feedback Byte"
++    fan_command:
++      id: xye_fan_command
++      name: "${friendly_name} C3 Fan Command Byte"
+     supported_modes:
+       - FAN_ONLY
+       - HEAT_COOL
+@@ -130,3 +133,7 @@
+       then:
+         - midea_ac.follow_me:
+             temperature: !lambda "return temperature;"
++
++logger:
++  logs:
++    midea_xye: DEBUG
