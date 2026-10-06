@@ -153,6 +153,9 @@ feedback has coincided with indoor electrical draw during heating.
 `hvac_action` keeps its existing fan-code-based heating/idle derivation;
 it is not independent evidence of compressor activity.
 
+For dated heating/cooling evidence and its limits, see
+[ducted-unit field observations](FIELD_OBSERVATIONS.md).
+
 # Local adoption proposal and passive capture
 
 Review the component commit before publication. Once approved and published,
