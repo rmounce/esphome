@@ -193,7 +193,7 @@ class AirConditioner : public PollingComponent, public climate::Climate, public 
   void set_temperature_2a_sensor(Sensor *sensor) { this->temperature_2a_sensor_ = sensor; }
   void set_temperature_2b_sensor(Sensor *sensor) { this->temperature_2b_sensor_ = sensor; }
   void set_temperature_3_sensor(Sensor *sensor) { this->temperature_3_sensor_ = sensor; }
-  void set_response_age_sensor(Sensor *sensor) { this->response_age_sensor_ = sensor; }
+  void set_status_fresh_sensor(binary_sensor::BinarySensor *sensor) { this->status_fresh_sensor_ = sensor; }
   void set_current_sensor(Sensor *sensor) { this->current_sensor_ = sensor; }
   void set_timer_start_sensor(Sensor *sensor) { this->timer_start_sensor_ = sensor; }
   void set_timer_stop_sensor(Sensor *sensor) { this->timer_stop_sensor_ = sensor; }
@@ -283,10 +283,7 @@ class AirConditioner : public PollingComponent, public climate::Climate, public 
   Sensor *temperature_2a_sensor_{nullptr};
   Sensor *temperature_2b_sensor_{nullptr};
   Sensor *temperature_3_sensor_{nullptr};
-  Sensor *response_age_sensor_{nullptr};
-  uint32_t last_c0_response_ms_{0};
-  bool has_c0_response_{false};
-  bool response_age_saturated_{false};
+  binary_sensor::BinarySensor *status_fresh_sensor_{nullptr};
   Sensor *current_sensor_{nullptr};
   Sensor *timer_start_sensor_{nullptr};
   Sensor *timer_stop_sensor_{nullptr};

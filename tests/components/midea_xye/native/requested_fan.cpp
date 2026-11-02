@@ -37,6 +37,7 @@ struct Rig {
   TestAC ac;
   uart::UARTComponent uart;
   sensor::Sensor feedback, command;
+  binary_sensor::BinarySensor fresh;
   text_sensor::TextSensor legacy;
   Rig() {
     ac.set_supported_modes({CLIMATE_MODE_HEAT, CLIMATE_MODE_COOL, CLIMATE_MODE_HEAT_COOL});
@@ -45,6 +46,7 @@ struct Rig {
     ac.set_fan_feedback_sensor(&feedback);
     ac.set_fan_command_sensor(&command);
     ac.set_fan_speed_sensor(&legacy);
+    ac.set_status_fresh_sensor(&fresh);
     ac.setup();
   }
   void respond(std::vector<uint8_t> data) {
@@ -83,7 +85,39 @@ unsigned count_logs(const std::string &prefix) {
 int main(int argc, char **argv) {
   assert(argc == 2);
   const std::string scenario = argv[1];
-  if (scenario == "requests") {
+  if (scenario == "freshness") {
+    Rig r;
+    assert(r.fresh.has_state() && !r.fresh.state && r.fresh.publishes == 1);
+    r.poll(0);
+    assert(r.fresh.state && r.fresh.publishes == 2);
+    r.ac.advance(29000);
+    r.poll(0);  // Reset the named deadline without another state publication.
+    assert(r.fresh.publishes == 2);
+    r.ac.advance(1000);  // Original deadline would have expired here.
+    assert(r.fresh.state);
+    for (uint8_t cmd : {0xC3, 0xC4, 0xC6}) {
+      r.ac.prepareTXData(cmd);
+      r.ac.sendRecv(cmd);
+      r.respond(frame(cmd));
+    }
+    auto invalid = frame(CLIENT_COMMAND_QUERY);
+    invalid[30] ^= 1;
+    r.ac.prepareTXData(CLIENT_COMMAND_QUERY);
+    r.ac.sendRecv(CLIENT_COMMAND_QUERY);
+    r.respond(invalid);
+    r.ac.advance(28999);
+    assert(r.fresh.state);
+    r.ac.advance(1); // No polling: scheduler alone expires the bit.
+    assert(!r.fresh.state && r.fresh.publishes == 3);
+    r.ac.advance(60000);
+    assert(r.fresh.publishes == 3);
+    r.ac.prepareTXData(0xC3);  // Unexpected C0 while waiting for an ack cannot refresh.
+    r.ac.sendRecv(0xC3);
+    r.respond(frame(CLIENT_COMMAND_QUERY));
+    assert(!r.fresh.state);
+    r.poll(0);
+    assert(r.fresh.state && r.fresh.publishes == 4);
+  } else if (scenario == "requests") {
     for (auto pair : {std::make_pair(CLIMATE_FAN_LOW, FAN_MODE_LOW),
                       std::make_pair(CLIMATE_FAN_MEDIUM, FAN_MODE_MEDIUM),
                       std::make_pair(CLIMATE_FAN_HIGH, FAN_MODE_HIGH),

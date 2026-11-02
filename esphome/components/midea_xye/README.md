@@ -76,9 +76,8 @@ climate:
       name: Timer Start
     timer_stop:                 # Optional. Off timer duration
       name: Timer Stop
-    response_age:               # Optional. Seconds since last valid C0 status reply
-      name: XYE Response Age
-      force_update: true         # Keep liveness timestamps fresh even when age repeats
+    status_fresh:               # Optional. Valid C0 received within 30 seconds
+      name: XYE Status Fresh
     defrost:                    # Optional. Protection flags bit 0x02 (not Error Flags)
       name: Defrost Active
     error_flags:                # Optional.
@@ -221,8 +220,9 @@ unit. The ESP32-S3 Arduino fixture compiles the real framework, diagnostics,
 Fahrenheit switch and existing inhibit callback API, using local source and
 no installation secrets. Neither validation requires heating availability.
 
-`response_age` is unavailable until the first checksum-valid C0 query reply.
-It is published at the configured polling period and keeps rising if the bus
-stops replying (capped at one hour until a new valid reply, preserving stale
-status across clock rollover). C3/C4/C6 acknowledgements and malformed frames do not refresh
-it. It measures bus status freshness, independently of ESP uptime/connectivity.
+`status_fresh` starts false and becomes true on an expected checksum-valid C0
+reply. Each valid C0 resets the named 30-second scheduler timeout; expiry sets
+it false even if polling has stopped. C3/C4/C6 acknowledgements and malformed
+frames do not refresh it. Binary sensor deduplication sends only transitions;
+no periodic heartbeat or force_update is needed. Consumers must also require
+node connectivity before trusting the bit.

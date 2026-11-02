@@ -2,9 +2,12 @@
 // Native I/O shims only. All protocol parsing, request handling, queueing and
 // packet construction run the production air_conditioner.cpp unchanged.
 #include <cmath>
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <functional>
+#include <map>
+#include <utility>
 #include <optional>
 #include <set>
 #include <string>
@@ -24,9 +27,27 @@ class PollingComponent {
   virtual float get_setup_priority() const { return 0; }
   void set_update_interval(uint32_t interval) { interval_ = interval; }
   uint32_t get_update_interval() const { return interval_; }
-  void set_timeout(const char *, uint32_t, std::function<void()> fn) { timeout = std::move(fn); }
-  void finish_response() { auto fn = std::move(timeout); timeout = nullptr; fn(); }
-  std::function<void()> timeout;
+  void set_timeout(const char *name, uint32_t delay, std::function<void()> fn) {
+    timeouts[name] = {now_ms + delay, std::move(fn)};
+  }
+  void finish_response() {
+    auto fn = std::move(timeouts.at("read-result").second);
+    timeouts.erase("read-result");
+    fn();
+  }
+  void advance(uint32_t elapsed) {
+    now_ms += elapsed;
+    while (true) {
+      auto due = std::find_if(timeouts.begin(), timeouts.end(),
+                             [this](const auto &entry) { return entry.second.first <= now_ms; });
+      if (due == timeouts.end()) break;
+      auto fn = std::move(due->second.second);
+      timeouts.erase(due);
+      fn();
+    }
+  }
+  uint64_t now_ms = 0;
+  std::map<std::string, std::pair<uint64_t, std::function<void()>>> timeouts;
  private:
   uint32_t interval_;
 };

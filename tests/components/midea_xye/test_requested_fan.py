@@ -62,6 +62,7 @@ def native_harness(tmp_path_factory):
 @pytest.mark.parametrize(
     "scenario",
     [
+        "freshness",
         "requests",
         "queued",
         "partial",

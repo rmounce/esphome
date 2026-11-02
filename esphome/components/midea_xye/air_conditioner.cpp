@@ -3,8 +3,6 @@
 #include "air_conditioner.h"
 
 #include "esphome/core/log.h"
-#include "esphome/core/hal.h"
-#include <cmath>
 
 namespace esphome {
 namespace midea {
@@ -84,6 +82,7 @@ void AirConditioner::control(const ClimateCall &call) {
 }
 
 void AirConditioner::setup() {
+  set_binary_sensor(this->status_fresh_sensor_, false);
   // this->uart_->check_uart_settings(4800, 1, UART_CONFIG_PARITY_NONE, 8);
   this->last_on_mode_ = *this->supported_modes_.begin();
   controlState = STATE_SEND_C0;
@@ -269,18 +268,6 @@ void AirConditioner::sendRecv(uint8_t cmdSent) {
 }
 
 void AirConditioner::update() {
-  // Publish even if the age happens to repeat: force_update on the optional
-  // sensor lets consumers distinguish a live bus observer from cached state.
-  if (this->response_age_sensor_ != nullptr) {
-    const uint32_t elapsed = millis() - this->last_c0_response_ms_;
-    // Latch a one-hour ceiling until another valid C0. A long bus outage must
-    // not appear fresh when the 32-bit millisecond clock eventually wraps.
-    if (this->has_c0_response_ && elapsed >= 3600000)
-      this->response_age_saturated_ = true;
-    const float age = !this->has_c0_response_ ? NAN
-        : this->response_age_saturated_ ? 3600.0f : elapsed / 1000.0f;
-    this->response_age_sensor_->publish_state(age);
-  }
   uint8_t cmdSent = 0x00;
   // Possible States:
   // 0: Waiting for Response from Command
@@ -371,9 +358,13 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
         // Header, destination and checksum have already been validated.
         // A C3/C4/C6 acknowledgement must not refresh C0 status freshness.
         if (cmdSent == CLIENT_COMMAND_QUERY) {
-          this->last_c0_response_ms_ = millis();
-          this->has_c0_response_ = true;
-          this->response_age_saturated_ = false;
+          if (this->status_fresh_sensor_ != nullptr) {
+            set_binary_sensor(this->status_fresh_sensor_, true);
+            // The scheduler expires this independently of polling progress.
+            this->set_timeout("xye_status_fresh", 30000, [this]() {
+              set_binary_sensor(this->status_fresh_sensor_, false);
+            });
+          }
         }
         ClimateMode mode = ClimateMode::CLIMATE_MODE_OFF;
         ClimatePreset preset = ClimatePreset::CLIMATE_PRESET_NONE;

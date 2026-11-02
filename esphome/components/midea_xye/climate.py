@@ -41,7 +41,6 @@ from esphome.const import (
     UNIT_WATT,
     UNIT_AMPERE,
     UNIT_MINUTE,
-    UNIT_SECOND,
     UNIT_EMPTY,
 )
 from esphome.components.climate import (
@@ -59,7 +58,7 @@ CONF_TEMPERATURE_2A = "temperature_2a"
 CONF_TEMPERATURE_2B = "temperature_2b"
 CONF_TEMPERATURE_3 = "temperature_3"
 CONF_CURRENT = "current"
-CONF_RESPONSE_AGE = "response_age"
+CONF_STATUS_FRESH = "status_fresh"
 CONF_TIMER_START = "timer_start"
 CONF_TIMER_STOP = "timer_stop"
 CONF_DEFROST = "defrost"
@@ -202,11 +201,7 @@ CONFIG_SCHEMA = cv.All(
                 device_class=DEVICE_CLASS_TEMPERATURE,
                 state_class=STATE_CLASS_MEASUREMENT,
             ),
-            cv.Optional(CONF_RESPONSE_AGE): sensor.sensor_schema(
-                unit_of_measurement=UNIT_SECOND,
-                accuracy_decimals=1,
-                device_class=DEVICE_CLASS_DURATION,
-                state_class=STATE_CLASS_MEASUREMENT,
+            cv.Optional(CONF_STATUS_FRESH): binary_sensor.binary_sensor_schema(
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
             cv.Optional(CONF_CURRENT): sensor.sensor_schema(
@@ -439,9 +434,9 @@ async def to_code(config):
     if CONF_TEMPERATURE_3 in config:
         sens = await sensor.new_sensor(config[CONF_TEMPERATURE_3])
         cg.add(var.set_temperature_3_sensor(sens))
-    if CONF_RESPONSE_AGE in config:
-        sens = await sensor.new_sensor(config[CONF_RESPONSE_AGE])
-        cg.add(var.set_response_age_sensor(sens))
+    if CONF_STATUS_FRESH in config:
+        sens = await binary_sensor.new_binary_sensor(config[CONF_STATUS_FRESH])
+        cg.add(var.set_status_fresh_sensor(sens))
     if CONF_CURRENT in config:
         sens = await sensor.new_sensor(config[CONF_CURRENT])
         cg.add(var.set_current_sensor(sens))
