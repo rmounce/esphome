@@ -3,6 +3,10 @@
 #include "air_conditioner.h"
 
 #include "esphome/core/log.h"
+#include "esphome/core/hal.h"
+#include <algorithm>
+#include <cinttypes>
+#include <cstdio>
 
 namespace esphome {
 namespace midea {
@@ -37,6 +41,15 @@ static void set_binary_sensor(binary_sensor::BinarySensor *sens, bool value) {
 }
 #endif
 
+static void log_frame(const char *direction, const uint8_t *data, size_t length) {
+  char hex[RX_LEN * 3 + 1];
+  size_t offset = 0;
+  for (size_t i = 0; i < length && i < RX_LEN; ++i)
+    offset += snprintf(hex + offset, sizeof(hex) - offset, "%02X%s", data[i], i + 1 == length ? "" : ":");
+  hex[offset] = '\0';
+  ESP_LOGV(Constants::TAG, "XYE raw t=%" PRIu32 " %s %s", millis(), direction, hex);
+}
+
 template<typename T> void update_property(T &property, const T &value, bool &flag) {
   if (property != value) {
     property = value;
@@ -48,7 +61,7 @@ void AirConditioner::control(const ClimateCall &call) {
   if (call.get_mode().has_value()) {
     this->mode = call.get_mode().value();
     this->confirmed_off_ = false;
-    followMeInit = false;
+    ++this->mode_generation_;
   }
   if (call.get_target_temperature().has_value())
     this->target_temperature = call.get_target_temperature().value();
@@ -73,12 +86,7 @@ void AirConditioner::control(const ClimateCall &call) {
     this->preset = call.get_preset().value();
   this->publish_state();
 
-  // Only interrupt routine polling. Queue everything else.
-  if (controlState == STATE_SEND_C0 || controlState == STATE_SEND_C4) {
-    controlState = STATE_SEND_C3;
-  } else {
-    command_queue_.push(STATE_SEND_C3);
-  }
+  this->enqueue_command_(STATE_SEND_C3, call.get_mode().has_value());
 }
 
 void AirConditioner::setup() {
@@ -115,11 +123,8 @@ void AirConditioner::setPowerState(bool state) {
   }
 
   this->confirmed_off_ = false;
-  if (controlState == STATE_SEND_C0 || controlState == STATE_SEND_C4) {
-    controlState = STATE_SEND_C3;
-  } else {
-    command_queue_.push(STATE_SEND_C3);
-  }
+  ++this->mode_generation_;
+  this->enqueue_command_(STATE_SEND_C3, true);
 }
 
 void AirConditioner::prepareTXData(uint8_t command) {
@@ -214,56 +219,100 @@ void AirConditioner::setACParams() {
   TXData[14] = CalculateCRC(TXData, TX_LEN);
 }
 
+// Snapshot each operation when requested. Never coalesce retransmissions: the
+// controller deliberately uses repeated C3/follow-me packets and ramp sequences.
+void AirConditioner::enqueue_command_(uint8_t state, bool resets_follow_me, bool beeper) {
+  if (state == STATE_SEND_C3)
+    this->setACParams();
+  Command command{state, {}, resets_follow_me, beeper, ++this->next_command_id_};
+  std::copy_n(this->TXData, TX_LEN, command.frame.begin());
+  // A finite queue rejects the newest operation explicitly instead of silently
+  // overwriting old payloads or allocating without bound on a broken bus.
+  if (this->command_queue_.size() >= 64) {
+    ESP_LOGW(Constants::TAG, "XYE enqueue rejected t=%" PRIu32 " id=%" PRIu32 " state=%u: queue full", millis(), command.id, state);
+    return;
+  }
+  if (controlState == STATE_SEND_C0 || controlState == STATE_SEND_C4) {
+    this->active_command_ = command;
+    controlState = state;
+  } else {
+    this->command_queue_.push(command);
+  }
+  ESP_LOGD(Constants::TAG, "XYE enqueue t=%" PRIu32 " id=%" PRIu32 " state=%u depth=%u", millis(), command.id, state,
+           static_cast<unsigned>(this->command_queue_.size()));
+}
+
+void AirConditioner::next_command_(uint8_t previous_command) {
+  this->active_command_.reset();
+  if (!this->command_queue_.empty()) {
+    this->active_command_ = this->command_queue_.front();
+    this->command_queue_.pop();
+    controlState = this->active_command_->state;
+  } else {
+    controlState = previous_command == CLIENT_COMMAND_QUERY ? STATE_SEND_C4 : STATE_SEND_C0;
+  }
+}
+
+bool AirConditioner::valid_response_(uint8_t expected) const {
+  return RXData[RX_BYTE_PREAMBLE] == PREAMBLE && RXData[RX_BYTE_PROLOGUE] == PROLOGUE &&
+         RXData[RX_BYTE_TO_CLIENT] == TO_CLIENT && RXData[RX_BYTE_COMMAND_TYPE] == expected &&
+         RXData[RX_BYTE_CRC] == CalculateCRC(RXData, RX_LEN);
+}
+
 void AirConditioner::sendRecv(uint8_t cmdSent) {
-  // TODO: Reimplement flow control for manual RS485 flow control chips
-  // digitalWrite(ComControlPin, RS485_TX_PIN_VALUE);
+  // Drop bytes left over from a completed/timed-out transaction before TX.
+  // This protocol has no transaction IDs: a delayed same-opcode reply arriving
+  // after a later TX remains indistinguishable. Do not claim stronger matching.
+  size_t stale = 0;
+  uint8_t byte;
+  while (this->uart_->available()) {
+    if (!this->uart_->read_byte(&byte))
+      break;
+    ++stale;
+  }
+  if (stale != 0)
+    ESP_LOGW(Constants::TAG, "XYE discarded stale RX bytes=%u", static_cast<unsigned>(stale));
+  if (cmdSent == CLIENT_COMMAND_QUERY)
+    this->query_generation_ = this->mode_generation_;
+  log_frame("TX", TXData, TX_LEN);
   this->uart_->write_array(TXData, TX_LEN);
+  ESP_LOGD(Constants::TAG, "XYE TX t=%" PRIu32 " id=%" PRIu32 " cmd=%02X depth=%u mode=%02X fan=%02X pressure=%02X fm=%02X/%02X",
+           millis(),
+           this->active_command_.has_value() ? this->active_command_->id : 0, cmdSent,
+           static_cast<unsigned>(this->command_queue_.size()), TXData[6], TXData[7], TXData[8],
+           TXData[10], TXData[11]);
   if (cmdSent == CLIENT_COMMAND_SET) {
-    // Record the actual UART command, not a queued or merely constructed byte.
     set_sensor(this->fan_command_sensor_, TXData[7]);
     ESP_LOGD(Constants::TAG, "C3 fan command byte: 0x%02X", TXData[7]);
   }
   this->uart_->flush();
   controlState = STATE_WAIT_DATA;
-  // Delay the remaining for 100 ms to allow response from the AC unit.
-  this->set_timeout("read-result", 100, [this, cmdSent]() {
-    // digitalWrite(ComControlPin, RS485_RX_PIN_VALUE);
-
-    uint8_t i = 0;
+  this->set_timeout("read-result", this->response_timeout, [this, cmdSent]() {
+    size_t count = 0;
+    uint8_t byte;
     while (this->uart_->available()) {
-      if (i < RX_LEN)
-        this->uart_->read_byte(&RXData[i]);
-      i++;
+      if (!this->uart_->read_byte(&byte))
+        break;
+      if (count < RX_LEN)
+        RXData[count] = byte;
+      ++count;
     }
-    if (i == RX_LEN) {
-      if (cmdSent != 0xC3) {
-        ParseResponse(cmdSent);
-      }
-      if (!command_queue_.empty()) {
-        controlState = command_queue_.front();
-        command_queue_.pop();
-      } else {
-        switch (cmdSent) {
-          case 0xC0:
-            controlState = STATE_SEND_C4;
-            break;
-          case 0xC3:
-            controlState = STATE_SEND_C0;
-            break;
-          case 0xC4:
-            controlState = STATE_SEND_C0;
-            break;
-          case 0xC6:
-            controlState = STATE_SEND_C0;
-            break;
-        }
-      }
+    log_frame("RX", RXData, std::min(count, static_cast<size_t>(RX_LEN)));
+    const bool valid = count == RX_LEN && this->valid_response_(cmdSent);
+    ESP_LOGD(Constants::TAG, "XYE RX t=%" PRIu32 " id=%" PRIu32 " expected=%02X actual=%02X bytes=%u valid=%u",
+             millis(),
+             this->active_command_.has_value() ? this->active_command_->id : 0, cmdSent,
+             count > 1 ? RXData[1] : 0, static_cast<unsigned>(count), valid);
+    if (valid) {
+      this->ParseResponse(cmdSent);
     } else {
-      ESP_LOGE(Constants::TAG, "Received incorrect message length from AC for Command %02X (Expected %d, got %d)", cmdSent, RX_LEN, i);
-      controlState = STATE_SEND_C0;
-      // Clear out the queue on error to prevent cascading failure
-      while(!command_queue_.empty()) command_queue_.pop();
+      // Delivery is UNKNOWN, not rejected by the unit. Do not blindly replay:
+      // duplicate ramp/step operations can change compressor demand. Retain
+      // every later operation in FIFO order, and report this failure explicitly.
+      this->confirmed_off_ = false;
+      ESP_LOGW(Constants::TAG, "XYE transaction failed cmd=%02X; delivery unknown, pending queue retained", cmdSent);
     }
+    this->next_command_(cmdSent);
   });
 }
 
@@ -277,34 +326,41 @@ void AirConditioner::update() {
   // 4: Sending Query C4 Command
   switch (controlState) {
     case STATE_SEND_C3: {
-      setACParams();
+      std::copy(this->active_command_->frame.begin(), this->active_command_->frame.end(), TXData);
+      if (this->active_command_->resets_follow_me)
+        followMeInit = false;
       cmdSent = CLIENT_COMMAND_SET;
       sendRecv(cmdSent);
       break;
     }
     case STATE_SEND_C6_FOLLOW_ME: {
-      prepareTXData(0xC6);
+      std::copy(this->active_command_->frame.begin(), this->active_command_->frame.end(), TXData);
       uint8_t follow_me_flags = 2; // Follow-me bit
-      if (!followMeInit || queued_follow_me_beeper_) {
+      if (!followMeInit || this->active_command_->beeper) {
         follow_me_flags |= 4; // Beeper bit/Init bit
         followMeInit = true;
       }
       TXData[10] = follow_me_flags;
-      lastFollowMeTemperature = queued_follow_me_temperature_;
-      TXData[11] = lastFollowMeTemperature;
+      lastFollowMeTemperature = TXData[11];
       TXData[14] = CalculateCRC(TXData, TX_LEN);
       sendRecv(0xC6);
       ESP_LOGI(Constants::TAG, "Sent Follow-Me data.");
       break;
     }
     case STATE_SEND_C6_PRESSURE: {
-      prepareTXData(0xC6);
-      TXData[8] = 0x10 | (queued_static_pressure_ & 0x0F);
-      TXData[10] = 4;
+      // Queue-time OFF is insufficient: another mode request, expired status,
+      // or failed transaction may have invalidated it before this TX slot.
+      if (!this->confirmed_off_ || this->mode != ClimateMode::CLIMATE_MODE_OFF) {
+        ESP_LOGW(Constants::TAG, "XYE pressure cancelled t=%" PRIu32 " id=%" PRIu32 ": fresh OFF evidence required",
+                 millis(), this->active_command_->id);
+        this->next_command_(0xC6);
+        break;
+      }
+      std::copy(this->active_command_->frame.begin(), this->active_command_->frame.end(), TXData);
       TXData[11] = lastFollowMeTemperature;
       TXData[14] = CalculateCRC(TXData, TX_LEN);
       sendRecv(0xC6);
-      ESP_LOGI(Constants::TAG, "Set static pressure to %d", queued_static_pressure_);
+      ESP_LOGD(Constants::TAG, "Pressure TX value=%u (not application confirmation)", TXData[8] & 0x0F);
       break;
     }
     case STATE_SEND_C0: {
@@ -327,7 +383,7 @@ void AirConditioner::update() {
   }
 }
 
-uint8_t AirConditioner::CalculateCRC(uint8_t *data, uint8_t len) {
+uint8_t AirConditioner::CalculateCRC(const uint8_t *data, uint8_t len) {
   uint32_t crc = 0;
   for (uint8_t i = 0; i < len; i++) {
     if (i != len - 2) {
@@ -342,7 +398,7 @@ bool AirConditioner::has_pending_c3_() const {
     return true;
   auto queue = this->command_queue_;
   while (!queue.empty()) {
-    if (queue.front() == STATE_SEND_C3)
+    if (queue.front().state == STATE_SEND_C3)
       return true;
     queue.pop();
   }
@@ -351,21 +407,11 @@ bool AirConditioner::has_pending_c3_() const {
 
 void AirConditioner::ParseResponse(uint8_t cmdSent) {
   // validate the response
-  if ((RXData[RX_BYTE_PREAMBLE] == PREAMBLE) && (RXData[RX_BYTE_PROLOGUE] == PROLOGUE) &&
-      (RXData[RX_BYTE_TO_CLIENT] == TO_CLIENT) && (RXData[RX_BYTE_CRC] == CalculateCRC(RXData, RX_LEN))) {
+  if (this->valid_response_(cmdSent)) {
     switch (RXData[RX_BYTE_COMMAND_TYPE]) {
       case CLIENT_COMMAND_QUERY: {
         // Header, destination and checksum have already been validated.
         // A C3/C4/C6 acknowledgement must not refresh C0 status freshness.
-        if (cmdSent == CLIENT_COMMAND_QUERY) {
-          if (this->status_fresh_sensor_ != nullptr) {
-            set_binary_sensor(this->status_fresh_sensor_, true);
-            // The scheduler expires this independently of polling progress.
-            this->set_timeout("xye_status_fresh", 30000, [this]() {
-              set_binary_sensor(this->status_fresh_sensor_, false);
-            });
-          }
-        }
         ClimateMode mode = ClimateMode::CLIMATE_MODE_OFF;
         ClimatePreset preset = ClimatePreset::CLIMATE_PRESET_NONE;
 
@@ -388,7 +434,18 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
           case OP_MODE_COOL:
             mode = ClimateMode::CLIMATE_MODE_COOL;
             break;
+          default:
+            this->confirmed_off_ = false;
+            ESP_LOGW(Constants::TAG, "XYE C0 unknown mode byte=%02X; OFF not established", RXData[RX_C0_BYTE_OP_MODE]);
+            return;
         }
+
+        set_binary_sensor(this->status_fresh_sensor_, true);
+        // OFF admission expires even when no optional freshness sensor exists.
+        this->set_timeout("xye_status_fresh", 30000, [this]() {
+          this->confirmed_off_ = false;
+          set_binary_sensor(this->status_fresh_sensor_, false);
+        });
 
         // The unit seems to show 0x10 when off after running auto.
         // Check to see if we haven't already matched to OFF state.
@@ -421,7 +478,8 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
             need_publish = true;
           }
         }
-        this->confirmed_off_ = (mode == ClimateMode::CLIMATE_MODE_OFF);
+        this->confirmed_off_ = mode == ClimateMode::CLIMATE_MODE_OFF && !pending_c3 &&
+                               this->query_generation_ == this->mode_generation_;
         if (mode != ClimateMode::CLIMATE_MODE_OFF)  // Don't update below states
         {
           if (!pending_c3 && this->preset != preset) {
@@ -533,6 +591,8 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
         bool need_publish = false;
         set_sensor(this->outdoor_sensor_, CalculateTemp(RXData[21]));
         set_number(this->static_pressure_number_, 0x0F & RXData[24]);
+        ESP_LOGD(Constants::TAG, "XYE pressure observation t=%" PRIu32 " source=%02X value=%u ambient_raw=%02X",
+                 millis(), cmdSent, RXData[24] & 0x0F, RXData[21]);
         if (this->mode != ClimateMode::CLIMATE_MODE_OFF ||
             ForceReadNextCycle == 1)  // Don't update below states unless mode is an ON state
         {
@@ -544,20 +604,6 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
               update_property(this->target_temperature, incoming_target_temp, need_publish);
             }
           }
-        }
-        if (RXData[9] != 0x30 || RXData[10] != 0x98 || RXData[11] != 0x00 || RXData[12] != 0x00 || RXData[13] != 0x00 ||
-            RXData[14] != 0x01 || RXData[15] != 0x20 || RXData[19] != 0xBC || RXData[20] != 0xD6 ||
-            RXData[22] != 0x00 || RXData[23] != 0x00 || RXData[24] != 0xFF || RXData[25] != 0x00 ||
-            RXData[26] != 0x80 || RXData[27] != 0x80 || RXData[28] != 0x80 || RXData[29] != 0x80) {
-          ESP_LOGI(Constants::TAG,
-                   "DEBUG C4/C6: "
-                   "%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%"
-                   "02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:"
-                   "%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X",
-                   RXData[0], RXData[1], RXData[2], RXData[3], RXData[4], RXData[5], RXData[6], RXData[7], RXData[8],
-                   RXData[9], RXData[10], RXData[11], RXData[12], RXData[13], RXData[14], RXData[15], RXData[16],
-                   RXData[17], RXData[18], RXData[19], RXData[20], RXData[21], RXData[22], RXData[23], RXData[24],
-                   RXData[25], RXData[26], RXData[27], RXData[28], RXData[29], RXData[30], RXData[31]);
         }
         ForceReadNextCycle = 0;
         break;
@@ -668,8 +714,8 @@ climate::ClimateTraits AirConditioner::traits() {
 
 void AirConditioner::dump_config() {
   ESP_LOGCONFIG(Constants::TAG, "MideaXYE:");
-  ESP_LOGCONFIG(Constants::TAG, "  [x] Period: %dms", this->get_update_interval());
-  ESP_LOGCONFIG(Constants::TAG, "  [x] Response timeout: %dms", this->response_timeout);
+  ESP_LOGCONFIG(Constants::TAG, "  [x] Period: %" PRIu32 "ms", this->get_update_interval());
+  ESP_LOGCONFIG(Constants::TAG, "  [x] Response timeout: %" PRIu32 "ms", this->response_timeout);
   ESP_LOGCONFIG(Constants::TAG, "  [x] Use Fahrenheit: %d", this->use_fahrenheit_);
 
 #ifdef USE_REMOTE_TRANSMITTER
@@ -685,15 +731,10 @@ void AirConditioner::do_follow_me(float temperature, bool beeper) {
   IrFollowMeData data(static_cast<uint8_t>(lroundf(temperature)), beeper);
   this->transmitter_.transmit(data);
 #else
-  queued_follow_me_temperature_ = static_cast<uint8_t>(lroundf(temperature));
-  queued_follow_me_beeper_ = beeper;
   if (this->mode != ClimateMode::CLIMATE_MODE_OFF) {
-    if (controlState == STATE_SEND_C0 || controlState == STATE_SEND_C4) {
-      controlState = STATE_SEND_C6_FOLLOW_ME;
-    } else {
-      command_queue_.push(STATE_SEND_C6_FOLLOW_ME);
-      ESP_LOGI(Constants::TAG, "Command pending. Queued Follow-Me data.");
-    }
+    this->prepareTXData(0xC6);
+    TXData[11] = static_cast<uint8_t>(lroundf(temperature));
+    this->enqueue_command_(STATE_SEND_C6_FOLLOW_ME, false, beeper);
   }
 #endif
 }
@@ -709,13 +750,10 @@ void AirConditioner::set_static_pressure(uint8_t static_pressure) {
     return;
   }
 
-  queued_static_pressure_ = static_pressure;
-  if (controlState == STATE_SEND_C0 || controlState == STATE_SEND_C4) {
-    controlState = STATE_SEND_C6_PRESSURE;
-  } else {
-    command_queue_.push(STATE_SEND_C6_PRESSURE);
-    ESP_LOGI(Constants::TAG, "Command pending. Queued setting static pressure to %d", static_pressure);
-  }
+  this->prepareTXData(0xC6);
+  TXData[8] = 0x10 | (static_pressure & 0x0F);
+  TXData[10] = 4;
+  this->enqueue_command_(STATE_SEND_C6_PRESSURE);
 }
 
 void AirConditioner::do_swing_step() {

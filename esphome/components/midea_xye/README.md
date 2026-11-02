@@ -168,8 +168,8 @@ inhibit callback and all installation-specific imports.
 
 Add the two byte sensors alongside the installation's existing coil sensors,
 static-pressure number, protect/error flags, defrost, compressor-status and
-outdoor-fan-status entities. Set component DEBUG logging without enabling
-unchanged UART poll dumps:
+outdoor-fan-status entities. Component DEBUG logging includes bounded
+transaction summaries (including routine polls); raw frames require VERBOSE:
 
 ```yaml
 logger:
@@ -226,3 +226,55 @@ it false even if polling has stopped. C3/C4/C6 acknowledgements and malformed
 frames do not refresh it. Binary sensor deduplication sends only transitions;
 no periodic heartbeat or force_update is needed. Consumers must also require
 node connectivity before trusting the bit.
+
+## Command transactions and pressure admission
+
+- Each queued operation snapshots its mode, target, requested fan, preset,
+  swing, follow-me temperature/beeper or pressure value when requested.
+  FIFO order and intentional duplicate retransmissions are preserved; later
+  requests and status parsing cannot rewrite older queued payloads.
+- Follow-me initialization resets when a queued mode C3 is transmitted, rather
+  than when a later mode request arrives. Initialization flags reflect preceding
+  transmitted commands. Pressure packets retain the last transmitted follow-me
+  temperature; that protocol context is deliberately evaluated at TX time.
+- Queue bound:64 pending plus one active operation. Reject newest at capacity
+  with a warning; do not silently overwrite payloads or coalesce retransmits.
+- Consume every received byte with a non-wrapping length counter. Require
+  exactly32 bytes, framing/destination/checksum and the outstanding request's
+  opcode before parsing or publishing observations. C3 ACKs are validated too;
+  ACK validity is not proof the requested physical operation has completed.
+- Use configured response timeout (previously hard-coded100ms). A failed
+  transaction has unknown delivery; do not automatically replay potentially
+  non-idempotent ramp operations. Log failure, retain later FIFO operations,
+  and return to polling after the queued work. Partial/extra/wrong replies do
+  not silently discard the queue. Drain leftover RX before the next TX.
+- Pressure requires OFF established by an expected, valid C0 within30s,
+  with no newer mode request. Check permission at enqueue AND actual TX;
+  cancel the individual pressure operation if invalidated. Expiry applies
+  without an optional status-fresh sensor. Unknown mode codes never grant OFF.
+  A query sent before a newer mode request cannot reauthorize pressure from
+  its old OFF response. Reported climate OFF is still optimistic; the component
+  gate uses separate C0 evidence, not that optimistic climate property.
+- DEBUG summaries: device uptime milliseconds, command ID (0 for polling),
+  queue depth, TX fields, expected/received opcode, length and validation result;
+  pressure observations identify C4/C6 source and raw ambient byte. IDs are
+  diagnostic only and do not exist on the wire. VERBOSE raw capture is limited
+  to one16-byte TX and at most32 received bytes per transaction. Byte count
+  still reports all received data. No unbounded frame history is retained.
+- Enable VERBOSE in the firmware's logger configuration to compile raw capture;
+  changing only runtime level cannot restore logging compiled out of a DEBUG
+  build. Revert higher logging after a bounded passive capture.
+
+Limits: protocol has no transaction IDs; a late same-opcode reply arriving after
+a newer request cannot be distinguished reliably. Fresh OFF does not establish
+compressor coast-down completion. C4/C6 temperature/pressure decoder semantics
+are unchanged pending raw evidence; the transient ambient32°C interpretation
+remains unverified. No new startup ramp, settling interval or airflow policy.
+
+Native regression evidence: seventeen new scenarios fail on the previous
+component and pass on these fixes. Expanded suite33 scenarios covers payload
+snapshots, invalid/unexpected replies, stale OFF, mode generation, pressure
+cancellation, init ordering, queue capacity, configured timeout, and RX lengths
+0/1/31/33/64/300/512. All33 also pass with undefined-behaviour sanitizer.
+These tests do not substitute for passive hardware validation after an approved
+firmware rollout.

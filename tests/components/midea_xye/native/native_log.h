@@ -16,3 +16,5 @@ template<class... Args> void native_log(const char *format, Args... args) {
 #define ESP_LOGW(tag, ...) esphome::native_log(__VA_ARGS__)
 #define ESP_LOGE(tag, ...) esphome::native_log(__VA_ARGS__)
 #define ESP_LOGCONFIG(tag, ...) esphome::native_log(__VA_ARGS__)
+
+#define ESP_LOGV(tag, ...) esphome::native_log(__VA_ARGS__)

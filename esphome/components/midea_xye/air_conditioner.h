@@ -21,6 +21,7 @@
 #include "esphome/core/log.h"
 #include "ir_transmitter.h"
 #include "static_pressure_number.h"
+#include <array>
 #include <queue>
 
 // STATES
@@ -251,16 +252,27 @@ class AirConditioner : public PollingComponent, public climate::Climate, public 
   uint8_t RXData[RX_LEN];
 
  private:
+  struct Command {
+    uint8_t state;
+    std::array<uint8_t, TX_LEN> frame;
+    bool resets_follow_me{false};
+    bool beeper{false};
+    uint32_t id{0};
+  };
+  void enqueue_command_(uint8_t state, bool resets_follow_me = false, bool beeper = false);
+  void next_command_(uint8_t previous_command);
+  bool valid_response_(uint8_t expected) const;
   uint8_t controlState;
   uint8_t ForceReadNextCycle;
-  std::queue<uint8_t> command_queue_;
+  std::queue<Command> command_queue_;
+  optional<Command> active_command_{};
+  uint32_t next_command_id_{0};
+  uint32_t mode_generation_{0};
+  uint32_t query_generation_{0};
   uint32_t response_timeout;
   bool followMeInit;
   uint8_t lastFollowMeTemperature;
   bool confirmed_off_{false};
-  uint8_t queued_follow_me_temperature_;
-  bool queued_follow_me_beeper_{false};
-  uint8_t queued_static_pressure_{0};
 
  protected:
   uart::UARTComponent *uart_;
@@ -310,7 +322,7 @@ class AirConditioner : public PollingComponent, public climate::Climate, public 
   optional<uint8_t> last_fan_feedback_{};
   bool has_pending_c3_() const;
 
-  static uint8_t CalculateCRC(uint8_t *Data, uint8_t len);
+  static uint8_t CalculateCRC(const uint8_t *Data, uint8_t len);
   void ParseResponse(uint8_t cmdSent);
   uint8_t CalculateSetTime(uint32_t time);
   uint32_t CalculateGetTime(uint8_t time);

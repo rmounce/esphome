@@ -23,6 +23,7 @@ def native_harness(tmp_path_factory):
         "components/text_sensor/text_sensor.h",
         "components/uart/uart.h",
         "core/component.h",
+        "core/hal.h",
     ]
     for name in headers:
         header = build / "esphome" / name
@@ -72,7 +73,24 @@ def native_harness(tmp_path_factory):
         "diagnostics",
         "fahrenheit",
         "pressure",
+        "snapshot-c3",
+        "snapshot-follow-me",
+        "snapshot-pressure",
+        "unexpected-status",
+        "wrong-extension-reply",
+        "stale-off",
+        "stale-off-no-sensor",
+        "off-generation",
+        "pressure-cancelled-by-mode",
+        "invalid-ack",
+        "wrong-ack",
+        "configured-timeout",
+        "unknown-mode",
+        "stale-rx",
+        "init-at-transmit",
+        "queue-bound",
+        *[f"rx-length-{length}" for length in (0, 1, 31, 33, 64, 300, 512)],
     ],
 )
 def test_requested_fan(native_harness, scenario):
-    subprocess.run([str(native_harness), scenario], check=True)
+    subprocess.run([str(native_harness), scenario], check=True, timeout=5)

@@ -14,6 +14,8 @@
 #include <vector>
 #include "esphome/components/climate/climate_mode.h"
 namespace esphome {
+inline uint32_t native_millis = 0;
+inline uint32_t millis() { return native_millis; }
 template<class T> using optional = std::optional<T>;
 namespace setup_priority { constexpr float BEFORE_CONNECTION = 100; }
 class PollingComponent {
@@ -37,6 +39,7 @@ class PollingComponent {
   }
   void advance(uint32_t elapsed) {
     now_ms += elapsed;
+    native_millis = static_cast<uint32_t>(now_ms);
     while (true) {
       auto due = std::find_if(timeouts.begin(), timeouts.end(),
                              [this](const auto &entry) { return entry.second.first <= now_ms; });
