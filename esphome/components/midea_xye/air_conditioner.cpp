@@ -3,6 +3,8 @@
 #include "air_conditioner.h"
 
 #include "esphome/core/log.h"
+#include "esphome/core/hal.h"
+#include <cmath>
 
 namespace esphome {
 namespace midea {
@@ -267,6 +269,18 @@ void AirConditioner::sendRecv(uint8_t cmdSent) {
 }
 
 void AirConditioner::update() {
+  // Publish even if the age happens to repeat: force_update on the optional
+  // sensor lets consumers distinguish a live bus observer from cached state.
+  if (this->response_age_sensor_ != nullptr) {
+    const uint32_t elapsed = millis() - this->last_c0_response_ms_;
+    // Latch a one-hour ceiling until another valid C0. A long bus outage must
+    // not appear fresh when the 32-bit millisecond clock eventually wraps.
+    if (this->has_c0_response_ && elapsed >= 3600000)
+      this->response_age_saturated_ = true;
+    const float age = !this->has_c0_response_ ? NAN
+        : this->response_age_saturated_ ? 3600.0f : elapsed / 1000.0f;
+    this->response_age_sensor_->publish_state(age);
+  }
   uint8_t cmdSent = 0x00;
   // Possible States:
   // 0: Waiting for Response from Command
@@ -354,6 +368,13 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
       (RXData[RX_BYTE_TO_CLIENT] == TO_CLIENT) && (RXData[RX_BYTE_CRC] == CalculateCRC(RXData, RX_LEN))) {
     switch (RXData[RX_BYTE_COMMAND_TYPE]) {
       case CLIENT_COMMAND_QUERY: {
+        // Header, destination and checksum have already been validated.
+        // A C3/C4/C6 acknowledgement must not refresh C0 status freshness.
+        if (cmdSent == CLIENT_COMMAND_QUERY) {
+          this->last_c0_response_ms_ = millis();
+          this->has_c0_response_ = true;
+          this->response_age_saturated_ = false;
+        }
         ClimateMode mode = ClimateMode::CLIMATE_MODE_OFF;
         ClimatePreset preset = ClimatePreset::CLIMATE_PRESET_NONE;
 

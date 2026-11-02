@@ -76,7 +76,10 @@ climate:
       name: Timer Start
     timer_stop:                 # Optional. Off timer duration
       name: Timer Stop
-    defrost:                    # Optional. Defrost active (ON when Error Flags = 2)
+    response_age:               # Optional. Seconds since last valid C0 status reply
+      name: XYE Response Age
+      force_update: true         # Keep liveness timestamps fresh even when age repeats
+    defrost:                    # Optional. Protection flags bit 0x02 (not Error Flags)
       name: Defrost Active
     error_flags:                # Optional.
       name: Error Flags
@@ -217,3 +220,9 @@ scheduler, ClimateCall validation/callback dispatch, hardware UART or a live
 unit. The ESP32-S3 Arduino fixture compiles the real framework, diagnostics,
 Fahrenheit switch and existing inhibit callback API, using local source and
 no installation secrets. Neither validation requires heating availability.
+
+`response_age` is unavailable until the first checksum-valid C0 query reply.
+It is published at the configured polling period and keeps rising if the bus
+stops replying (capped at one hour until a new valid reply, preserving stale
+status across clock rollover). C3/C4/C6 acknowledgements and malformed frames do not refresh
+it. It measures bus status freshness, independently of ESP uptime/connectivity.
