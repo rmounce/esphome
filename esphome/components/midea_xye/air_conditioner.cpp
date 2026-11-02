@@ -587,6 +587,11 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
         break;
       }
       case 0xC6:
+        // C6 is an acknowledgement, not an extended status observation.
+        // This unit reports applied pressure through regular C4 polls. Sharing
+        // the C4 decoder here can publish unrelated ACK bytes as temperatures
+        // or falsely confirm pressure. Transport validation still happens.
+        break;
       case 0xC4:
         bool need_publish = false;
         set_sensor(this->outdoor_sensor_, CalculateTemp(RXData[21]));

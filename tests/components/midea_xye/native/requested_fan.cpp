@@ -379,6 +379,35 @@ int main(int argc, char **argv) {
     checksum(wrong);
     r.respond(wrong);
     assert(r.outside.state == 32 && r.pressure.state == 1); // Decoder unchanged.
+  } else if (scenario == "c6-ack-only") {
+    Rig r;
+    r.ac.set_use_fahrenheit(true);
+    r.ac.mode = CLIMATE_MODE_COOL;
+    r.ac.target_temperature = 24;
+    r.outside.publish_state(17.5);
+    r.pressure.publish_state(1);
+    r.ac.do_follow_me(21);
+    r.ac.update();
+    auto ack = frame(0xC6);
+    ack[18] = 70 + 0x87;
+    ack[21] = 0x68; // Would incorrectly publish ambient32 degrees.
+    ack[24] = 2; // Must not confirm new pressure from ACK data.
+    checksum(ack);
+    r.respond(ack);
+    assert(r.outside.state == 17.5 && r.outside.publishes == 1);
+    assert(r.pressure.state == 1 && r.pressure.publishes == 1);
+    assert(r.ac.target_temperature == 24);
+    r.ac.prepareTXData(0xC4);
+    r.ac.sendRecv(0xC4);
+    auto observation = frame(0xC4);
+    observation[18] = 75 + 0x87;
+    observation[21] = 0x49;
+    observation[24] = 0x22;
+    checksum(observation);
+    r.respond(observation);
+    assert(r.outside.state == 16.5);
+    assert(r.pressure.state == 2 && r.pressure.publishes == 2);
+    assert(r.ac.target_temperature > 23 && r.ac.target_temperature < 25);
   } else if (scenario == "stale-off" || scenario == "stale-off-no-sensor") {
     Rig r;
     if (scenario == "stale-off-no-sensor") r.ac.set_status_fresh_sensor(nullptr);

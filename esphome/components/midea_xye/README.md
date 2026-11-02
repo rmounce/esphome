@@ -265,16 +265,25 @@ node connectivity before trusting the bit.
   changing only runtime level cannot restore logging compiled out of a DEBUG
   build. Revert higher logging after a bounded passive capture.
 
+Only C4 publishes extended temperature, setpoint and pressure observations. C6
+is validated as an acknowledgement and then completes its transaction without
+publishing sensor/climate state. Passive captures on the installation confirmed
+C4 byte24 low nibble tracks both selected SP1 (`0x21`) and SP2 (`0x22`). Thus
+pressure confirmation waits for a normal C4 poll rather than interpreting C6
+ACK bytes as extended data. This also prevents a C6 byte21=`0x68` from creating
+a spurious32°C ambient reading. It does not establish all C6 field semantics.
+
 Limits: protocol has no transaction IDs; a late same-opcode reply arriving after
 a newer request cannot be distinguished reliably. Fresh OFF does not establish
-compressor coast-down completion. C4/C6 temperature/pressure decoder semantics
-are unchanged pending raw evidence; the transient ambient32°C interpretation
-remains unverified. No new startup ramp, settling interval or airflow policy.
+compressor coast-down completion. C4 temperature/pressure interpretation is
+unchanged; actual C6 field semantics and the original ambient32°C cause remain
+unverified. No new startup ramp, settling interval or airflow policy.
 
 Native regression evidence: seventeen new scenarios fail on the previous
-component and pass on these fixes. Expanded suite33 scenarios covers payload
+component and pass on these fixes. Expanded suite34 scenarios covers payload
 snapshots, invalid/unexpected replies, stale OFF, mode generation, pressure
 cancellation, init ordering, queue capacity, configured timeout, and RX lengths
-0/1/31/33/64/300/512. All33 also pass with undefined-behaviour sanitizer.
+0/1/31/33/64/300/512 and C6 ACK suppression with C4 observation recovery.
+The preceding33-scenario transaction suite also passed undefined-behaviour sanitizer.
 These tests do not substitute for passive hardware validation after an approved
 firmware rollout.

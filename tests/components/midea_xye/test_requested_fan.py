@@ -78,6 +78,7 @@ def native_harness(tmp_path_factory):
         "snapshot-pressure",
         "unexpected-status",
         "wrong-extension-reply",
+        "c6-ack-only",
         "stale-off",
         "stale-off-no-sensor",
         "off-generation",
