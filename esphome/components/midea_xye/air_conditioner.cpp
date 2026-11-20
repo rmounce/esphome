@@ -57,10 +57,27 @@ template<typename T> void update_property(T &property, const T &value, bool &fla
   }
 }
 
+void AirConditioner::publish_observed_mode_(const char *value) {
+#ifdef USE_TEXT_SENSOR
+  set_text_sensor(this->observed_mode_sensor_, value);
+#endif
+}
+
+void AirConditioner::invalidate_observed_mode_() {
+  this->confirmed_off_ = false;
+  this->publish_observed_mode_("unknown");
+}
+
+void AirConditioner::publish_mode_transaction_(const char *value) {
+#ifdef USE_TEXT_SENSOR
+  set_text_sensor(this->mode_transaction_sensor_, value);
+#endif
+}
+
 void AirConditioner::control(const ClimateCall &call) {
   if (call.get_mode().has_value()) {
     this->mode = call.get_mode().value();
-    this->confirmed_off_ = false;
+    this->invalidate_observed_mode_();
     ++this->mode_generation_;
   }
   if (call.get_target_temperature().has_value())
@@ -96,7 +113,8 @@ void AirConditioner::setup() {
   controlState = STATE_SEND_C0;
   ForceReadNextCycle = 1;
   followMeInit = false;
-  this->confirmed_off_ = false;  // Wait for first C0 to confirm state
+  this->invalidate_observed_mode_();  // Wait for first C0 to confirm state.
+  this->publish_mode_transaction_("idle");
 
   // A deterministic request default, not a claim about the observed fan.
   // No C3 is queued just to initialize monitoring.
@@ -122,7 +140,7 @@ void AirConditioner::setPowerState(bool state) {
     this->fan_mode = this->requested_fan_mode_;
   }
 
-  this->confirmed_off_ = false;
+  this->invalidate_observed_mode_();
   ++this->mode_generation_;
   this->enqueue_command_(STATE_SEND_C3, true);
 }
@@ -224,11 +242,13 @@ void AirConditioner::setACParams() {
 void AirConditioner::enqueue_command_(uint8_t state, bool resets_follow_me, bool beeper) {
   if (state == STATE_SEND_C3)
     this->setACParams();
-  Command command{state, {}, resets_follow_me, beeper, ++this->next_command_id_};
+  Command command{state, {}, resets_follow_me, beeper, ++this->next_command_id_, this->mode_generation_};
   std::copy_n(this->TXData, TX_LEN, command.frame.begin());
   // A finite queue rejects the newest operation explicitly instead of silently
   // overwriting old payloads or allocating without bound on a broken bus.
   if (this->command_queue_.size() >= 64) {
+    if (resets_follow_me)
+      this->publish_mode_transaction_("rejected");
     ESP_LOGW(Constants::TAG, "XYE enqueue rejected t=%" PRIu32 " id=%" PRIu32 " state=%u: queue full", millis(), command.id, state);
     return;
   }
@@ -238,6 +258,8 @@ void AirConditioner::enqueue_command_(uint8_t state, bool resets_follow_me, bool
   } else {
     this->command_queue_.push(command);
   }
+  if (resets_follow_me)
+    this->publish_mode_transaction_("pending");
   ESP_LOGD(Constants::TAG, "XYE enqueue t=%" PRIu32 " id=%" PRIu32 " state=%u depth=%u", millis(), command.id, state,
            static_cast<unsigned>(this->command_queue_.size()));
 }
@@ -309,8 +331,14 @@ void AirConditioner::sendRecv(uint8_t cmdSent) {
       // Delivery is UNKNOWN, not rejected by the unit. Do not blindly replay:
       // duplicate ramp/step operations can change compressor demand. Retain
       // every later operation in FIFO order, and report this failure explicitly.
-      this->confirmed_off_ = false;
+      this->invalidate_observed_mode_();
       ESP_LOGW(Constants::TAG, "XYE transaction failed cmd=%02X; delivery unknown, pending queue retained", cmdSent);
+    }
+    // A reply to an earlier mode request cannot replace the latest result.
+    if (cmdSent == CLIENT_COMMAND_SET && this->active_command_.has_value() &&
+        this->active_command_->resets_follow_me &&
+        this->active_command_->mode_generation == this->mode_generation_) {
+      this->publish_mode_transaction_(valid ? "acknowledged" : "delivery_unknown");
     }
     this->next_command_(cmdSent);
   });
@@ -413,6 +441,7 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
         // Header, destination and checksum have already been validated.
         // A C3/C4/C6 acknowledgement must not refresh C0 status freshness.
         ClimateMode mode = ClimateMode::CLIMATE_MODE_OFF;
+        const char *observed_mode = "off";
         ClimatePreset preset = ClimatePreset::CLIMATE_PRESET_NONE;
 
         switch (RXData[RX_C0_BYTE_OP_MODE] & 0xEF) {
@@ -421,21 +450,26 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
             break;
           case OP_MODE_AUTO:
             mode = ClimateMode::CLIMATE_MODE_HEAT_COOL;
+            observed_mode = "heat_cool";
             break;
           case OP_MODE_FAN:
             mode = ClimateMode::CLIMATE_MODE_FAN_ONLY;
+            observed_mode = "fan_only";
             break;
           case OP_MODE_DRY:
             mode = ClimateMode::CLIMATE_MODE_DRY;
+            observed_mode = "dry";
             break;
           case OP_MODE_HEAT:
             mode = ClimateMode::CLIMATE_MODE_HEAT;
+            observed_mode = "heat";
             break;
           case OP_MODE_COOL:
             mode = ClimateMode::CLIMATE_MODE_COOL;
+            observed_mode = "cool";
             break;
           default:
-            this->confirmed_off_ = false;
+            this->invalidate_observed_mode_();
             ESP_LOGW(Constants::TAG, "XYE C0 unknown mode byte=%02X; OFF not established", RXData[RX_C0_BYTE_OP_MODE]);
             return;
         }
@@ -443,7 +477,7 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
         set_binary_sensor(this->status_fresh_sensor_, true);
         // OFF admission expires even when no optional freshness sensor exists.
         this->set_timeout("xye_status_fresh", 30000, [this]() {
-          this->confirmed_off_ = false;
+          this->invalidate_observed_mode_();
           set_binary_sensor(this->status_fresh_sensor_, false);
         });
 
@@ -453,6 +487,7 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
         if (mode != ClimateMode::CLIMATE_MODE_OFF &&
             ((RXData[RX_C0_BYTE_OP_MODE] & OP_MODE_AUTO_FLAG) == OP_MODE_AUTO_FLAG)) {
           mode = ClimateMode::CLIMATE_MODE_HEAT_COOL;
+          observed_mode = "heat_cool";
         }
 
         uint8_t current_fan_speed = RXData[RX_C0_BYTE_FAN_MODE] & 0x0F;
@@ -478,8 +513,10 @@ void AirConditioner::ParseResponse(uint8_t cmdSent) {
             need_publish = true;
           }
         }
-        this->confirmed_off_ = mode == ClimateMode::CLIMATE_MODE_OFF && !pending_c3 &&
-                               this->query_generation_ == this->mode_generation_;
+        const bool current_mode = !pending_c3 && this->query_generation_ == this->mode_generation_;
+        this->confirmed_off_ = mode == ClimateMode::CLIMATE_MODE_OFF && current_mode;
+        if (current_mode)
+          this->publish_observed_mode_(observed_mode);
         if (mode != ClimateMode::CLIMATE_MODE_OFF)  // Don't update below states
         {
           if (!pending_c3 && this->preset != preset) {

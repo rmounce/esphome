@@ -59,6 +59,8 @@ CONF_TEMPERATURE_2B = "temperature_2b"
 CONF_TEMPERATURE_3 = "temperature_3"
 CONF_CURRENT = "current"
 CONF_STATUS_FRESH = "status_fresh"
+CONF_OBSERVED_MODE = "observed_mode"
+CONF_MODE_TRANSACTION = "mode_transaction"
 CONF_TIMER_START = "timer_start"
 CONF_TIMER_STOP = "timer_stop"
 CONF_DEFROST = "defrost"
@@ -242,6 +244,12 @@ CONFIG_SCHEMA = cv.All(
                 accuracy_decimals=0,
                 device_class=DEVICE_CLASS_EMPTY,
                 state_class=STATE_CLASS_MEASUREMENT,
+            ),
+            cv.Optional(CONF_OBSERVED_MODE): text_sensor.text_sensor_schema(
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+            ),
+            cv.Optional(CONF_MODE_TRANSACTION): text_sensor.text_sensor_schema(
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
             cv.Optional(CONF_FAN_SPEED): text_sensor.text_sensor_schema(
                 icon=ICON_FAN,
@@ -455,9 +463,10 @@ async def to_code(config):
     if CONF_PROTECT_FLAGS in config:
         sens = await sensor.new_sensor(config[CONF_PROTECT_FLAGS])
         cg.add(var.set_protect_flags_sensor(sens))
-    if CONF_FAN_SPEED in config:
-        sens = await text_sensor.new_text_sensor(config[CONF_FAN_SPEED])
-        cg.add(var.set_fan_speed_sensor(sens))
+    for key in (CONF_FAN_SPEED, CONF_OBSERVED_MODE, CONF_MODE_TRANSACTION):
+        if key in config:
+            sens = await text_sensor.new_text_sensor(config[key])
+            cg.add(getattr(var, f"set_{key}_sensor")(sens))
     for key in (CONF_FAN_FEEDBACK, CONF_FAN_COMMAND):
         if key in config:
             sens = await sensor.new_sensor(config[key])

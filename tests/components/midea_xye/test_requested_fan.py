@@ -73,6 +73,7 @@ def native_harness(tmp_path_factory):
         "diagnostics",
         "fahrenheit",
         "pressure",
+        "mode-diagnostics",
         "snapshot-c3",
         "snapshot-follow-me",
         "snapshot-pressure",

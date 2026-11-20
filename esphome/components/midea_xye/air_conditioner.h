@@ -206,6 +206,8 @@ class AirConditioner : public PollingComponent, public climate::Climate, public 
   void set_outdoor_fan_status_sensor(binary_sensor::BinarySensor *binary_sensor) { this->outdoor_fan_status_sensor_ = binary_sensor; }
 #endif
 #ifdef USE_TEXT_SENSOR
+  void set_observed_mode_sensor(text_sensor::TextSensor *sensor) { this->observed_mode_sensor_ = sensor; }
+  void set_mode_transaction_sensor(text_sensor::TextSensor *sensor) { this->mode_transaction_sensor_ = sensor; }
   void set_fan_speed_sensor(text_sensor::TextSensor *sensor) { this->fan_speed_sensor_ = sensor; }
 #endif
   void set_fan_feedback_sensor(Sensor *sensor) { this->fan_feedback_sensor_ = sensor; }
@@ -258,8 +260,12 @@ class AirConditioner : public PollingComponent, public climate::Climate, public 
     bool resets_follow_me{false};
     bool beeper{false};
     uint32_t id{0};
+    uint32_t mode_generation{0};
   };
   void enqueue_command_(uint8_t state, bool resets_follow_me = false, bool beeper = false);
+  void invalidate_observed_mode_();
+  void publish_observed_mode_(const char *value);
+  void publish_mode_transaction_(const char *value);
   void next_command_(uint8_t previous_command);
   bool valid_response_(uint8_t expected) const;
   uint8_t controlState;
@@ -307,6 +313,8 @@ class AirConditioner : public PollingComponent, public climate::Climate, public 
   binary_sensor::BinarySensor *outdoor_fan_status_sensor_{nullptr};
 #endif
 #ifdef USE_TEXT_SENSOR
+  text_sensor::TextSensor *observed_mode_sensor_{nullptr};
+  text_sensor::TextSensor *mode_transaction_sensor_{nullptr};
   text_sensor::TextSensor *fan_speed_sensor_{nullptr};
 #endif
   Sensor *humidity_sensor_{nullptr};

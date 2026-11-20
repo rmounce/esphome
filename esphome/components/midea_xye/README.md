@@ -287,3 +287,18 @@ cancellation, init ordering, queue capacity, configured timeout, and RX lengths
 The preceding33-scenario transaction suite also passed undefined-behaviour sanitizer.
 These tests do not substitute for passive hardware validation after an approved
 firmware rollout.
+
+### Mode diagnostics
+
+- `observed_mode` reports `off`, `heat`, `cool`, `heat_cool`, `fan_only`,
+  `dry` or `unknown`. A valid C0 for the current mode generation supplies the
+  value after queued C3 commands drain. A mode request, invalid transaction,
+  unknown C0 mode or expired C0 freshness clears it.
+- `mode_transaction` describes the latest explicit mode request. It starts at
+  `idle`, then reports `pending`, `acknowledged`, `delivery_unknown`, or
+  `rejected` when the queue is full. A validated C3 response supplies the ACK.
+  Fan speed updates leave this diagnostic unchanged. Older mode
+  transactions cannot overwrite a newer outcome.
+- A C3 ACK records a bus response. C0 is the observed mode. Compressor feedback
+  is independent. XYE replies lack transaction IDs, so a late same-opcode
+  reply may still be attributed to the wrong transaction.

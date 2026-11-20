@@ -40,7 +40,7 @@ struct Rig {
   binary_sensor::BinarySensor compressor;
   StaticPressureNumber pressure;
   binary_sensor::BinarySensor fresh;
-  text_sensor::TextSensor legacy;
+  text_sensor::TextSensor legacy, observed_mode, mode_transaction;
   Rig() {
     ac.set_supported_modes({CLIMATE_MODE_HEAT, CLIMATE_MODE_COOL, CLIMATE_MODE_HEAT_COOL});
     ac.set_uart_parent(&uart);
@@ -48,6 +48,8 @@ struct Rig {
     ac.set_fan_feedback_sensor(&feedback);
     ac.set_fan_command_sensor(&command);
     ac.set_fan_speed_sensor(&legacy);
+    ac.set_observed_mode_sensor(&observed_mode);
+    ac.set_mode_transaction_sensor(&mode_transaction);
     ac.set_status_fresh_sensor(&fresh);
     ac.set_compressor_status_sensor(&compressor);
     ac.set_outdoor_temperature_sensor(&outside);
@@ -296,6 +298,46 @@ int main(int argc, char **argv) {
     assert(r.uart.writes.back()[8] == 0x15);
     assert(!r.command.has_state());
     r.respond(frame(0xC6));
+  } else if (scenario == "mode-diagnostics") {
+    Rig r;
+    assert(r.observed_mode.state == "unknown" && r.mode_transaction.state == "idle");
+    r.poll(0, OP_MODE_OFF);
+    const auto observed_publishes = r.observed_mode.publishes;
+    r.poll(0, OP_MODE_OFF);
+    assert(r.observed_mode.state == "off" && r.observed_mode.publishes == observed_publishes);
+
+    r.ac.prepareTXData(CLIENT_COMMAND_QUERY);
+    r.ac.sendRecv(CLIENT_COMMAND_QUERY);
+    ClimateCall call;
+    call.mode = CLIMATE_MODE_COOL;
+    r.ac.control(call);
+    call.mode = CLIMATE_MODE_OFF;
+    r.ac.control(call);
+    assert(r.observed_mode.state == "unknown" && r.mode_transaction.state == "pending");
+    r.respond(frame(CLIENT_COMMAND_QUERY, 0, OP_MODE_OFF));
+    assert(r.observed_mode.state == "unknown"); // C0 predates the latest intent.
+    r.emit(FAN_MODE_AUTO);
+    assert(r.uart.writes.back()[6] == OP_MODE_COOL);
+    assert(r.mode_transaction.state == "pending"); // The older COOL was acknowledged.
+    r.ac.update();
+    assert(r.uart.writes.back()[6] == OP_MODE_OFF);
+    r.respond({});
+    assert(r.mode_transaction.state == "delivery_unknown");
+    r.poll(0, OP_MODE_COOL);
+    assert(r.observed_mode.state == "cool" && r.mode_transaction.state == "delivery_unknown");
+
+    r.ac.control(call);
+    r.emit(FAN_MODE_AUTO);
+    assert(r.mode_transaction.state == "acknowledged");
+    assert(r.observed_mode.state == "unknown"); // C3 ACK is not C0 evidence.
+    r.poll(0, OP_MODE_OFF);
+    assert(r.observed_mode.state == "off");
+    r.poll(0, 0xFF);
+    assert(r.observed_mode.state == "unknown");
+    r.poll(0, OP_MODE_OFF);
+    r.ac.advance(30000);
+    assert(r.observed_mode.state == "unknown");
+    assert(r.mode_transaction.state == "acknowledged");
   } else if (scenario == "snapshot-c3") {
     Rig r;
     r.ac.update(); // C0 outstanding; every later request must retain its payload.
@@ -533,12 +575,14 @@ int main(int argc, char **argv) {
       r.ac.control(call);
     }
     assert(count_logs("XYE enqueue rejected") == 1);
+    assert(r.mode_transaction.state == "rejected");
     r.respond(frame(CLIENT_COMMAND_QUERY));
     for (int i = 0; i != 64; ++i) {
       r.emit(FAN_MODE_AUTO);
       assert(r.uart.writes.back()[8] == 18 + (i % 10));
     }
     assert(count_logs("C3 fan command byte:") == 64);
+    assert(r.mode_transaction.state == "rejected"); // Older ACKs cannot hide rejection.
   } else {
     return 2;
   }
